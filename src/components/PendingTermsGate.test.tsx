@@ -93,6 +93,35 @@ describe("PendingTermsGate", () => {
     expect(window.location.href).toBe(expectedUrl);
   });
 
+  it("CA-01: pendente no tenant t-2 = redireciona com tenant_id=t-2 e return_to, ambos codificados", async () => {
+    sessionStorage.setItem("active-tenant", "t-2");
+    window.location.href = "http://localhost/dashboard?a=1&b=2#x y";
+    (TermsService.getStatus as any).mockResolvedValue({
+      pending: [
+        {
+          type: "contratacao_servico",
+          term_id: "term-3",
+          term_name: "Termo de Contratação",
+          required_version: 1,
+          can_accept: true,
+          document_url: "http://cdn/contratacao.html",
+        },
+      ],
+    });
+
+    render(<PendingTermsGate />);
+
+    const ctaButton = await screen.findByRole("button", { name: /ir para o portal do cliente/i });
+    expect(TermsService.getStatus).toHaveBeenCalledWith("t-2");
+    fireEvent.click(ctaButton);
+
+    const target = new URL(window.location.href);
+    expect(target.searchParams.get("tenant_id")).toBe("t-2");
+    expect(target.searchParams.get("return_to")).toBe("http://localhost/dashboard?a=1&b=2#x y");
+    // O return_to precisa estar codificado: o "&" interno não pode virar um 3o parametro.
+    expect(Array.from(target.searchParams.keys()).sort()).toEqual(["return_to", "tenant_id"]);
+  });
+
   it("pendente não-acionável = exibe texto de espera do Termo de Contratação", async () => {
     (TermsService.getStatus as any).mockResolvedValue({
       pending: [

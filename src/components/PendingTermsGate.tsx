@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useAuthStore } from "@/store/authStore";
 import { TermsService, TermStatusItem } from "@/services/api";
 import { logoutFromHostedUI } from "@/lib/pkce";
@@ -21,9 +21,14 @@ function getActiveTenantId(): string | undefined {
 export default function PendingTermsGate() {
   const { logout } = useAuthStore();
   const [pendingItems, setPendingItems] = useState<TermStatusItem[] | null>(null);
+  // Tenant usado na última consulta de status: é o dono do termo pendente e
+  // o que o Portal do Cliente precisa ativar para o aceite cair no lugar certo.
+  const statusTenantIdRef = useRef<string | undefined>(undefined);
 
   const fetchStatus = () => {
-    TermsService.getStatus(getActiveTenantId())
+    const tenantId = getActiveTenantId();
+    statusTenantIdRef.current = tenantId;
+    TermsService.getStatus(tenantId)
       .then((res) => {
         setPendingItems(res.pending || []);
       })
@@ -75,7 +80,10 @@ export default function PendingTermsGate() {
     const customersUrl =
       process.env.NEXT_PUBLIC_CUSTOMERS_URL || "https://customer.unumpeople.com.br";
     const returnTo = window.location.href;
-    window.location.href = `${customersUrl}?return_to=${encodeURIComponent(returnTo)}`;
+    const tenantParam = statusTenantIdRef.current
+      ? `&tenant_id=${encodeURIComponent(statusTenantIdRef.current)}`
+      : "";
+    window.location.href = `${customersUrl}?return_to=${encodeURIComponent(returnTo)}${tenantParam}`;
   };
 
   if (pendingItems === null) {
