@@ -19,6 +19,28 @@ vi.mock("@/lib/pkce", () => ({
   logoutFromHostedUI: vi.fn(),
 }));
 
+const fakeJwt = (claims: Record<string, unknown>) => {
+  const b64 = (o: unknown) =>
+    btoa(JSON.stringify(o)).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+  return `${b64({ alg: "none" })}.${b64(claims)}.sig`;
+};
+
+const pendingContract = (canAccept: boolean) => ({
+  pending: [
+    {
+      type: "contratacao_servico",
+      term_id: "term-9",
+      term_name: "Termo de Contratação",
+      required_version: 1,
+      can_accept: canAccept,
+      document_url: "http://cdn/contratacao.html",
+    },
+  ],
+});
+
+const GLOBAL_ADMIN_NOTICE =
+  "O termo de contratação desta empresa está pendente. Só um administrador da empresa pode aceitá-lo.";
+
 describe("PendingTermsGate", () => {
   const mockLogout = vi.fn();
   const originalLocation = window.location;
@@ -93,8 +115,8 @@ describe("PendingTermsGate", () => {
     expect(window.location.href).toBe(expectedUrl);
   });
 
-  it("CA-01: pendente no tenant t-2 = redireciona com tenant_id=t-2 e return_to, ambos codificados", async () => {
-    sessionStorage.setItem("active-tenant", "t-2");
+  it("CA-01: pendente em tenant com caractere especial = redireciona com tenant_id e return_to, ambos codificados", async () => {
+    sessionStorage.setItem("active-tenant", "t 2&x");
     window.location.href = "http://localhost/dashboard?a=1&b=2#x y";
     (TermsService.getStatus as any).mockResolvedValue({
       pending: [
@@ -112,11 +134,13 @@ describe("PendingTermsGate", () => {
     render(<PendingTermsGate />);
 
     const ctaButton = await screen.findByRole("button", { name: /ir para o portal do cliente/i });
-    expect(TermsService.getStatus).toHaveBeenCalledWith("t-2");
+    expect(TermsService.getStatus).toHaveBeenCalledWith("t 2&x");
     fireEvent.click(ctaButton);
 
+    // Valor codificado na URL (espaço e "&" não podem vazar para a query)
+    expect(window.location.href).toContain("&tenant_id=t%202%26x");
     const target = new URL(window.location.href);
-    expect(target.searchParams.get("tenant_id")).toBe("t-2");
+    expect(target.searchParams.get("tenant_id")).toBe("t 2&x");
     expect(target.searchParams.get("return_to")).toBe("http://localhost/dashboard?a=1&b=2#x y");
     // O return_to precisa estar codificado: o "&" interno não pode virar um 3o parametro.
     expect(Array.from(target.searchParams.keys()).sort()).toEqual(["return_to", "tenant_id"]);
@@ -188,5 +212,106 @@ describe("PendingTermsGate", () => {
     });
 
     consoleErrorSpy.mockRestore();
+  });
+
+  it("CA-09: sem tenant ativo salvo, o redirecionamento leva o tenant do token (custom:tenant_id)", async () => {
+    (useAuthStore as any).mockReturnValue({
+      logout: mockLogout,
+      session: { role: "TenantAdmin", token: fakeJwt({ "custom:tenant_id": "t-3" }) },
+    });
+    (TermsService.getStatus as any).mockResolvedValue(pendingContract(true));
+
+    render(<PendingTermsGate />);
+
+    const cta = await screen.findByRole("button", { name: /ir para o portal do cliente/i });
+    // A consulta sai sem tenant: a API resolve pelo token.
+    expect(TermsService.getStatus).toHaveBeenCalledWith(undefined);
+    fireEvent.click(cta);
+
+    expect(new URL(window.location.href).searchParams.get("tenant_id")).toBe("t-3");
+  });
+
+  it("tenant ativo salvo tem prioridade sobre o tenant do token", async () => {
+    sessionStorage.setItem("active-tenant", "t-2");
+    (useAuthStore as any).mockReturnValue({
+      logout: mockLogout,
+      session: { role: "TenantAdmin", token: fakeJwt({ "custom:tenant_id": "t-3" }) },
+    });
+    (TermsService.getStatus as any).mockResolvedValue(pendingContract(true));
+
+    render(<PendingTermsGate />);
+
+    fireEvent.click(await screen.findByRole("button", { name: /ir para o portal do cliente/i }));
+
+    expect(new URL(window.location.href).searchParams.get("tenant_id")).toBe("t-2");
+  });
+
+  it("token ilegível não quebra o gate: redireciona sem tenant_id", async () => {
+    (useAuthStore as any).mockReturnValue({
+      logout: mockLogout,
+      session: { role: "USER", token: "nao-e-jwt" },
+    });
+    (TermsService.getStatus as any).mockResolvedValue(pendingContract(true));
+
+    render(<PendingTermsGate />);
+
+    fireEvent.click(await screen.findByRole("button", { name: /ir para o portal do cliente/i }));
+
+    expect(new URL(window.location.href).searchParams.has("tenant_id")).toBe(false);
+  });
+
+  it("CA-10: GlobalAdmin com termo pendente e can_accept=false vê o aviso e não é bloqueado", async () => {
+    (useAuthStore as any).mockReturnValue({
+      logout: mockLogout,
+      session: { role: "GlobalAdmin", token: fakeJwt({}) },
+    });
+    (TermsService.getStatus as any).mockResolvedValue(pendingContract(false));
+
+    render(<PendingTermsGate />);
+
+    expect(await screen.findByText(GLOBAL_ADMIN_NOTICE)).toBeInTheDocument();
+    expect(screen.queryByText("Aguardando aceite do Termo de Contratação")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /ir para o portal do cliente/i })).not.toBeInTheDocument();
+    expect(window.location.href).toBe("http://localhost/dashboard");
+  });
+
+  it("CA-10: usuário comum com can_accept=false segue o fluxo atual (tela de espera, sem aviso)", async () => {
+    (useAuthStore as any).mockReturnValue({
+      logout: mockLogout,
+      session: { role: "TenantAdmin", token: fakeJwt({}) },
+    });
+    (TermsService.getStatus as any).mockResolvedValue(pendingContract(false));
+
+    render(<PendingTermsGate />);
+
+    expect(await screen.findByText("Aguardando aceite do Termo de Contratação")).toBeInTheDocument();
+    expect(screen.queryByText(GLOBAL_ADMIN_NOTICE)).not.toBeInTheDocument();
+  });
+
+  it("GlobalAdmin com can_accept=true segue o fluxo de aceite no portal", async () => {
+    (useAuthStore as any).mockReturnValue({
+      logout: mockLogout,
+      session: { role: "GlobalAdmin", token: fakeJwt({}) },
+    });
+    (TermsService.getStatus as any).mockResolvedValue(pendingContract(true));
+
+    render(<PendingTermsGate />);
+
+    expect(await screen.findByRole("button", { name: /ir para o portal do cliente/i })).toBeInTheDocument();
+    expect(screen.queryByText(GLOBAL_ADMIN_NOTICE)).not.toBeInTheDocument();
+  });
+
+  it("GlobalAdmin não passa quando a consulta de status falha (fail-closed)", async () => {
+    (useAuthStore as any).mockReturnValue({
+      logout: mockLogout,
+      session: { role: "GlobalAdmin", token: fakeJwt({}) },
+    });
+    (TermsService.getStatus as any).mockRejectedValue(new Error("Network error"));
+    vi.spyOn(console, "error").mockImplementation(() => {});
+
+    render(<PendingTermsGate />);
+
+    expect(await screen.findByText("Aguardando aceite do Termo de Contratação")).toBeInTheDocument();
+    expect(screen.queryByText(GLOBAL_ADMIN_NOTICE)).not.toBeInTheDocument();
   });
 });
