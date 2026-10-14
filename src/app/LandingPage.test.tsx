@@ -67,4 +67,12 @@ describe("LandingPage", () => {
       expect(mockRedirectToHostedUI).toHaveBeenCalledWith("/");
     });
   });
+
+  it('"Começar Agora" leva direto aos planos, sem passar pelo redirecionamento de /servicos', () => {
+    render(<LandingPage />);
+    expect(screen.getByRole("link", { name: /Começar Agora/ })).toHaveAttribute(
+      "href",
+      "https://unumpeople.app/#planos",
+    );
+  });
 });
