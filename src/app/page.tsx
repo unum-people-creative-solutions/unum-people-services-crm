@@ -57,7 +57,7 @@ export default function LandingPage() {
           </p>
           <div className="flex flex-col sm:row items-center justify-center gap-5">
             <Link 
-              href="https://unumpeople.com.br/servicos" 
+              href="https://unumpeople.app/#planos" 
               className="w-full sm:w-auto bg-brand-orange text-white px-12 py-5 rounded-2xl font-black text-xl hover:brightness-110 transition-all shadow-xl hover:scale-[1.02] active:scale-[0.98]"
             >
               Começar Agora
