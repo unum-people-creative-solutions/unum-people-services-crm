@@ -15,6 +15,7 @@ import { metadata as admin } from './(admin)/layout'
 import { metadata as acessoNegado } from './acesso-negado/layout'
 import { metadata as auth } from './auth/layout'
 import { metadata as login } from './login/page'
+import { metadata as adsCallback } from './settings/ads/layout'
 
 const NAO_INDEXAR = { index: false, follow: false }
 
@@ -25,6 +26,7 @@ describe('indexação das áreas logadas do CRM', () => {
     ['/acesso-negado', acessoNegado],
     ['/auth', auth],
     ['/login', login],
+    ['/settings/ads/callback (fora do grupo dashboard)', adsCallback],
   ] as [string, Metadata][])('%s pede para não indexar', (_rota, metadados) => {
     expect(metadados.robots).toEqual(NAO_INDEXAR)
   })
