@@ -231,7 +231,7 @@ export default function TenantsPage() {
                           <UserPlus size={14} />
                         </button>
                         <button 
-                          onClick={() => router.push(`/kanban?tenant_id=${t.id}`)}
+                          onClick={() => router.push(`/kanban?tenant_id=${encodeURIComponent(t.id)}`)}
                           className="bg-primary-50 text-primary-700 px-3 py-1 rounded-md hover:bg-primary-100 transition-colors font-bold flex items-center gap-1"
                         >
                           <LayoutGrid size={14} /> Acessar CRM
@@ -295,7 +295,7 @@ export default function TenantsPage() {
                     <UserPlus size={14} /> Usuário
                   </button>
                   <button 
-                    onClick={() => router.push(`/kanban?tenant_id=${t.id}`)}
+                    onClick={() => router.push(`/kanban?tenant_id=${encodeURIComponent(t.id)}`)}
                     className="flex-[2] bg-primary-600 text-white px-3 py-2 rounded-md hover:bg-primary-700 transition-colors font-bold text-xs flex items-center justify-center gap-2 shadow-sm"
                   >
                     <LayoutGrid size={14} /> Acessar CRM

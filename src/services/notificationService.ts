@@ -4,7 +4,7 @@ export const NotificationService = {
   subscribe: async (subscription: PushSubscription, tenantId?: string) => {
     let url = '/notifications/subscribe';
     if (tenantId) {
-      url += `?tenant_id=${tenantId}`;
+      url += `?tenant_id=${encodeURIComponent(tenantId)}`;
     }
     // Convertendo para JSON puro para garantir que apenas endpoint e keys sejam enviados
     const response = await api.post(url, subscription.toJSON());
@@ -13,7 +13,7 @@ export const NotificationService = {
   checkStatus: async (endpoint: string, tenantId?: string) => {
     let url = `/notifications/check?endpoint=${encodeURIComponent(endpoint)}`;
     if (tenantId) {
-      url += `&tenant_id=${tenantId}`;
+      url += `&tenant_id=${encodeURIComponent(tenantId)}`;
     }
     const response = await api.get(url);
     return response.data.subscribed; // retorna boolean
@@ -21,7 +21,7 @@ export const NotificationService = {
   unsubscribe: async (endpoint: string, tenantId?: string) => {
     let url = '/notifications/unsubscribe';
     if (tenantId) {
-      url += `?tenant_id=${tenantId}`;
+      url += `?tenant_id=${encodeURIComponent(tenantId)}`;
     }
     const response = await api.delete(url, { data: { endpoint } });
     return response.data;
