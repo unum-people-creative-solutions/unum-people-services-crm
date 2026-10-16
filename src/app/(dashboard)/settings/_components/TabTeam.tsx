@@ -43,7 +43,7 @@ export default function TabTeam() {
     e.preventDefault();
     try {
       setInviting(true);
-      await TenantService.addUser(inviteForm);
+      await TenantService.addUser(inviteForm, activeTenantId);
       setShowInviteModal(false);
       setInviteForm({ name: "", email: "", role: "user" });
       await fetchUsers();
@@ -59,7 +59,7 @@ export default function TabTeam() {
     if (!confirm("Tem certeza que deseja remover este usuário permanentemente?")) return;
     try {
       setActionLoading(`remove-${email}`);
-      await TenantService.removeUser(email);
+      await TenantService.removeUser(email, activeTenantId);
       await fetchUsers();
     } catch (error) {
       console.error(error);
@@ -74,7 +74,7 @@ export default function TabTeam() {
     const newRole = isCurrentlyAdmin ? 'user' : 'TenantAdmin';
     try {
       setActionLoading(`role-${email}`);
-      await TenantService.updateUserRole(email, newRole);
+      await TenantService.updateUserRole(email, newRole, activeTenantId);
       await fetchUsers();
     } catch (error) {
       console.error(error);
