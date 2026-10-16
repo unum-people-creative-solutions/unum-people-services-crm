@@ -210,4 +210,55 @@ describe('TenantContext', () => {
     // Tentativa de troca para inquilino bloqueado é ignorada
     expect(screen.getByTestId('active-id')).toHaveTextContent('tenant-A');
   });
+
+  // O PendingTermsGate fica fora do TenantProvider e lê o tenant ativo do
+  // sessionStorage. A seleção automática precisa ficar gravada lá também, ou o
+  // aviso consulta o tenant do token enquanto a tela mostra outra empresa.
+  it('T07 — grava no sessionStorage o primeiro tenant escolhido automaticamente', async () => {
+    (useAuthStore as any).mockReturnValue({ session: { tenantId: 'tenant-fora-da-lista' } });
+
+    render(
+      <TenantProvider>
+        <TestComponent />
+      </TenantProvider>
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId('active-id')).toHaveTextContent('tenant-A');
+    });
+    expect(sessionStorage.getItem('active-tenant')).toBe('tenant-A');
+  });
+
+  it('T08 — grava no sessionStorage o tenant inicial vindo da sessão', async () => {
+    render(
+      <TenantProvider>
+        <TestComponent />
+      </TenantProvider>
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId('is-loading')).toHaveTextContent('false');
+    });
+    expect(sessionStorage.getItem('active-tenant')).toBe('tenant-A');
+  });
+
+  it('T09 — avisa a troca de tenant com o evento active-tenant-change', async () => {
+    const user = userEvent.setup();
+    const recebidos: string[] = [];
+    const ouvir = (e: Event) => recebidos.push((e as CustomEvent<string>).detail);
+    window.addEventListener('active-tenant-change', ouvir);
+
+    render(
+      <TenantProvider>
+        <TestComponent />
+      </TenantProvider>
+    );
+    await waitFor(() => {
+      expect(screen.getByTestId('is-loading')).toHaveTextContent('false');
+    });
+    await user.click(screen.getByTestId('switch-btn'));
+
+    window.removeEventListener('active-tenant-change', ouvir);
+    expect(recebidos.at(-1)).toBe('tenant-B');
+  });
 });
