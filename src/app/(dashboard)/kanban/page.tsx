@@ -126,17 +126,20 @@ function KanbanContent() {
 
   // "Acessar CRM" na lista de tenants abre /kanban?tenant_id=<id>. Aplica uma
   // vez por valor, depois que a lista carrega (o switchTenant recusa tenant
-  // bloqueado); uma troca posterior pelo seletor não é desfeita.
+  // bloqueado); uma troca posterior pelo seletor não é desfeita. Enquanto o
+  // pedido não foi tratado, o quadro não carrega: senão buscaria os leads do
+  // tenant antigo, e a resposta atrasada poderia sobrescrever o quadro.
   const requestedTenantId = searchParams.get("tenant_id");
-  const appliedTenantRequestRef = useRef<string | null>(null);
+  const [handledTenantRequest, setHandledTenantRequest] = useState<string | null>(null);
+  const waitingForRequestedTenant = !!requestedTenantId && handledTenantRequest !== requestedTenantId;
   useEffect(() => {
     if (!requestedTenantId || isLoadingTenants) return;
-    if (appliedTenantRequestRef.current === requestedTenantId) return;
-    appliedTenantRequestRef.current = requestedTenantId;
+    if (handledTenantRequest === requestedTenantId) return;
     if (requestedTenantId !== activeTenantId) {
       switchTenant(requestedTenantId);
     }
-  }, [requestedTenantId, isLoadingTenants, activeTenantId, switchTenant]);
+    setHandledTenantRequest(requestedTenantId);
+  }, [requestedTenantId, isLoadingTenants, handledTenantRequest, activeTenantId, switchTenant]);
 
   const [boardData, setBoardData] = useState<any>({});
   const [loading, setLoading] = useState(true);
@@ -359,7 +362,7 @@ function KanbanContent() {
   }, [activeTenantId, selectedYear, selectedMonth]);
 
   useEffect(() => {
-    if (activeTenantId) {
+    if (activeTenantId && !waitingForRequestedTenant) {
       const tenantChanged = activeTenantId !== prevTenantId.current;
       const dateChanged = selectedMonth !== prevMonth.current || selectedYear !== prevYear.current;
 
@@ -387,7 +390,7 @@ function KanbanContent() {
         }
       }
     }
-  }, [selectedMonth, selectedYear, activeTenantId, availableTenants, loadLeads, session, setSession]);
+  }, [selectedMonth, selectedYear, activeTenantId, availableTenants, loadLeads, session, setSession, waitingForRequestedTenant]);
 
   const handleLogout = () => {
     logout();

@@ -650,6 +650,7 @@ describe('KanbanPage — tenant_id na URL', () => {
 
   beforeEach(async () => {
     vi.clearAllMocks();
+    switchTenant.mockReset();
     const navegacao = await import('next/navigation');
     (navegacao.useSearchParams as any).mockReturnValue(new URLSearchParams('tenant_id=tenant-B'));
     (useAuthStore as any).mockReturnValue({
@@ -691,12 +692,47 @@ describe('KanbanPage — tenant_id na URL', () => {
     expect(switchTenant).toHaveBeenCalledTimes(1);
   });
 
-  it('não troca quando o tenant da URL já é o ativo', async () => {
+  it('não troca quando o tenant da URL já é o ativo, nem depois de uma troca pelo seletor', async () => {
     (useTenant as any).mockReturnValue(contexto({ activeTenantId: 'tenant-B', activeTenantName: 'Beta' }));
-    render(<KanbanPage />);
+    const { rerender } = render(<KanbanPage />);
+    await act(async () => {});
+
+    (useTenant as any).mockReturnValue(contexto({ activeTenantId: 'tenant-C', activeTenantName: 'Gama' }));
+    rerender(<KanbanPage />);
     await act(async () => {});
 
     expect(switchTenant).not.toHaveBeenCalled();
+  });
+
+  // O kanban montava com o tenant antigo e já buscava os leads dele; a
+  // resposta atrasada podia sobrescrever o quadro do tenant pedido.
+  const tenantsDasBuscas = () => (LeadService.list as any).mock.calls.map((c: unknown[]) => c[3]);
+
+  it('não busca os leads do tenant antigo antes de trocar para o da URL', async () => {
+    switchTenant.mockImplementation((id: string) => {
+      (useTenant as any).mockReturnValue(contexto({ activeTenantId: id, activeTenantName: 'Beta' }));
+    });
+    (useTenant as any).mockReturnValue(contexto({ isLoadingTenants: true }));
+    const { rerender } = render(<KanbanPage />);
+    await act(async () => {});
+
+    (useTenant as any).mockReturnValue(contexto({}));
+    rerender(<KanbanPage />);
+
+    await waitFor(() => expect(tenantsDasBuscas()).toContain('tenant-B'));
+    expect(tenantsDasBuscas()).not.toContain('tenant-A');
+  });
+
+  it('com tenant bloqueado na URL, fica no tenant ativo e carrega os leads dele', async () => {
+    (useTenant as any).mockReturnValue(contexto({
+      availableTenants: [
+        { id: 'tenant-A', nome_negocio: 'Alpha' },
+        { id: 'tenant-B', nome_negocio: 'Beta', is_blocked: true },
+      ],
+    }));
+    render(<KanbanPage />);
+
+    await waitFor(() => expect(tenantsDasBuscas()).toContain('tenant-A'));
   });
 });
 
