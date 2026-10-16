@@ -121,7 +121,22 @@ function KanbanContent() {
     availableTenants,
     isMultiTenant,
     switchTenant,
+    isLoadingTenants,
   } = useTenant();
+
+  // "Acessar CRM" na lista de tenants abre /kanban?tenant_id=<id>. Aplica uma
+  // vez por valor, depois que a lista carrega (o switchTenant recusa tenant
+  // bloqueado); uma troca posterior pelo seletor não é desfeita.
+  const requestedTenantId = searchParams.get("tenant_id");
+  const appliedTenantRequestRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!requestedTenantId || isLoadingTenants) return;
+    if (appliedTenantRequestRef.current === requestedTenantId) return;
+    appliedTenantRequestRef.current = requestedTenantId;
+    if (requestedTenantId !== activeTenantId) {
+      switchTenant(requestedTenantId);
+    }
+  }, [requestedTenantId, isLoadingTenants, activeTenantId, switchTenant]);
 
   const [boardData, setBoardData] = useState<any>({});
   const [loading, setLoading] = useState(true);
