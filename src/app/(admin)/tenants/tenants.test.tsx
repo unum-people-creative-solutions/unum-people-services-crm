@@ -176,4 +176,25 @@ describe('TenantsPage', () => {
     // O texto Clinica A pode aparecer no fundo e no modal, pegamos qualquer um
     expect(screen.getAllByText(/Clinica A/i).length).toBeGreaterThan(0);
   });
+
+  // O tenant de demonstração tem "#" no ID; sem codificar, o kanban abria com
+  // tenant_id=TENANT.
+  it('"Acessar CRM" codifica o ID do tenant', async () => {
+    const user = userEvent.setup();
+    (useAuthStore as any).mockReturnValue({ session: { role: 'GlobalAdmin' } });
+    (TenantService.list as any).mockResolvedValue([
+      { id: 'TENANT#DEMO_REVIEW', nome_negocio: 'Demonstração', email_contato: 'd@test.com', api_key: 'key-d', nicho: 'OUTRO', status: 'ATIVO' },
+    ]);
+
+    render(<TenantsPage />);
+    const botoes = await screen.findAllByRole('button', { name: /acessar crm/i });
+    for (const botao of botoes) {
+      await user.click(botao);
+    }
+
+    expect(mockPush).toHaveBeenCalledTimes(botoes.length);
+    for (const [destino] of mockPush.mock.calls) {
+      expect(destino).toBe('/kanban?tenant_id=TENANT%23DEMO_REVIEW');
+    }
+  });
 });

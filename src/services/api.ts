@@ -80,7 +80,7 @@ export const LeadService = {
   create: async (data: LeadData, tenantId?: string) => {
     let url = `/leads`;
     if (tenantId) {
-      url += `?tenant_id=${tenantId}`;
+      url += `?tenant_id=${encodeURIComponent(tenantId)}`;
     }
     const response = await api.post(url, data);
     return response.data;
@@ -88,7 +88,7 @@ export const LeadService = {
   updateStatus: async (id: string, status: string, valor?: number, dataVenda?: string, tenantId?: string) => {
     let url = `/leads/${id}`;
     if (tenantId) {
-      url += `?tenant_id=${tenantId}`;
+      url += `?tenant_id=${encodeURIComponent(tenantId)}`;
     }
     const response = await api.put(url, { status, valor_venda: valor, data_venda: dataVenda });
     return response.data;
@@ -96,7 +96,7 @@ export const LeadService = {
   update: async (id: string, data: { nome: string; email?: string; telefone: string; cpf?: string; data_nascimento?: string; origem?: string; anotacoes?: string }, tenantId?: string) => {
     let url = `/leads/${id}`;
     if (tenantId) {
-      url += `?tenant_id=${tenantId}`;
+      url += `?tenant_id=${encodeURIComponent(tenantId)}`;
     }
     const response = await api.patch(url, data);
     return response.data;
@@ -104,7 +104,7 @@ export const LeadService = {
   searchCustomers: async (query: string, tenantId?: string) => {
     let url = `/leads/search?q=${query}`;
     if (tenantId) {
-      url += `&tenant_id=${tenantId}`;
+      url += `&tenant_id=${encodeURIComponent(tenantId)}`;
     }
     const response = await api.get(url);
     return response.data;
@@ -112,7 +112,7 @@ export const LeadService = {
   addSale: async (leadId: string, valor: number, data: string, tenantId?: string) => {
     let url = `/leads/${leadId}/sales`;
     if (tenantId) {
-      url += `?tenant_id=${tenantId}`;
+      url += `?tenant_id=${encodeURIComponent(tenantId)}`;
     }
     const response = await api.post(url, { valor, data });
     return response.data;
@@ -120,7 +120,7 @@ export const LeadService = {
   delete: async (id: string, tenantId?: string) => {
     let url = `/leads/${id}`;
     if (tenantId) {
-      url += `?tenant_id=${tenantId}`;
+      url += `?tenant_id=${encodeURIComponent(tenantId)}`;
     }
     const response = await api.delete(url);
     return response.data;
@@ -198,7 +198,7 @@ export const TermsService = {
   getStatus: async (tenantId?: string): Promise<TermsStatusResponse> => {
     let url = '/me/terms/status';
     if (tenantId) {
-      url += `?tenant_id=${tenantId}`;
+      url += `?tenant_id=${encodeURIComponent(tenantId)}`;
     }
     const response = await api.get(url);
     return response.data;
