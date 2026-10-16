@@ -52,17 +52,20 @@ O projeto está configurado como um PWA de alta performance, pronto para ser emp
 ### Configurações Atuais
 - **Offline Support:** Service Worker configurado via `next-pwa`.
 - **Manifest:** Localizado em `public/manifest.json`. Contém definições de cores (`#3D5D97`) e ícones maskable.
-- **TWA Validation:** Digital Asset Links em `public/.well-known/assetlinks.json`.
-    - *Fingerprint Atual:* Inclui o SHA256 da KeyStore de desenvolvimento local.
-    - *Produção:* Adicionar o SHA256 do Google Play App Signing quando a conta for aprovada.
+- **Ícones maskable:** `public/icons/icon-maskable-{512,192}.png` são gerados por `node scripts/generate-maskable-icons.mjs` (logo `public/images/logo_simbolo.webp` na zona segura, fundo branco). `src/app/pwa-icons.test.ts` garante que o launcher não corta o logo.
+- **TWA Validation:** Digital Asset Links em `public/.well-known/assetlinks.json`. Precisa conter o SHA-256 da **chave de assinatura do app** do Google Play (`75:E8:60:…:F6:A5`, a mesma de `android/twa-manifest.json` → `fingerprints`); sem ela o app abre com barra de endereço.
 
-### Ciclo de Build Android (Bubblewrap)
-1. **Configuração**: `npx @bubblewrap/cli init --manifest=https://crm.unumpeople.com.br/manifest.json`
-2. **Build**: `npx @bubblewrap/cli build`
-3. **KeyStore**: O arquivo `android.keystore` é a chave de assinatura. **Nunca perca a senha desta chave.**
-4. **Artefatos**:
-    - `app-release-signed.apk`: Para testes manuais em dispositivos Android.
-    - `app-release-bundle.aab`: Para upload no Google Play Console.
+### App Android (Bubblewrap)
+- **Pacote:** `br.com.unumpeople.crm`, em teste fechado no Play Console. Só `android/twa-manifest.json` é versionado (o resto de `android/` está no `.gitignore`; para commitar o manifest, `git add -u android/twa-manifest.json`).
+- **Versões:** Bubblewrap CLI 1.27.0 → `targetSdk` 36 (exigência do Play desde 31/08/2026) e `minSdkVersion` 24 (exigido pelo `androidbrowserhelper` 2.7.4).
+- **Chaves:** o AAB é assinado com a **chave de upload** `android/unum-key.keystore` (alias `unum-alias`, SHA-256 `04:03:F2:…:58:B7`). Ela só existe localmente: **guarde uma cópia e a senha num cofre.** Se perdê-la, peça a redefinição da chave de upload no Play Console ("Protegido com o Google Play"); a chave de assinatura do app fica com o Google e não muda.
+
+### Ciclo de Release Android
+1. **Ícones em produção primeiro:** o Bubblewrap baixa `iconUrl`/`maskableIconUrl` de `crm.unumpeople.com.br`. Ícone novo = deploy do site antes do passo 3.
+2. **Versão:** subir `appVersionCode`, `appVersionName` e `appVersion` em `android/twa-manifest.json`.
+3. **Projeto:** `cd android && bubblewrap update --skipVersionUpgrade --manifest=./twa-manifest.json`.
+4. **Build:** `cd android && bubblewrap build` (pede as senhas da keystore). Gera `app-release-bundle.aab` (upload no Play Console) e `app-release-signed.apk` (teste manual).
+5. **Check antes do upload:** `node scripts/check-android-release.mjs android/app-release-bundle.aab <versionCode>`. Só sai com código 0 se o pacote, o `targetSdk` ≥ 36, o `versionCode` e a chave de upload estiverem certos (usa `~/.bubblewrap/bundletool.jar` ou `BUNDLETOOL_JAR`).
 
 ## 8. Tecnologias
 - **Next.js 14/15** (App Router).
