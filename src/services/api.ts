@@ -165,16 +165,17 @@ export const TenantService = {
     return response.data;
   },
 
-  addUser: async (data: { name: string; email: string; role: string }) => {
-    const response = await api.post('/tenant/users', data);
+  // tenantId: a empresa selecionada, a mesma que listUsers mostra.
+  addUser: async (data: { name: string; email: string; role: string }, tenantId: string) => {
+    const response = await api.post(`/tenant/users?tenant_id=${encodeURIComponent(tenantId)}`, data);
     return response.data;
   },
-  updateUserRole: async (email: string, role: string) => {
-    const response = await api.patch(`/tenant/users?email=${encodeURIComponent(email)}`, { role });
+  updateUserRole: async (email: string, role: string, tenantId: string) => {
+    const response = await api.patch(`/tenant/users?email=${encodeURIComponent(email)}&tenant_id=${encodeURIComponent(tenantId)}`, { role });
     return response.data;
   },
-  removeUser: async (email: string) => {
-    const response = await api.delete(`/tenant/users?email=${encodeURIComponent(email)}`);
+  removeUser: async (email: string, tenantId: string) => {
+    const response = await api.delete(`/tenant/users?email=${encodeURIComponent(email)}&tenant_id=${encodeURIComponent(tenantId)}`);
     return response.data;
   }
 };

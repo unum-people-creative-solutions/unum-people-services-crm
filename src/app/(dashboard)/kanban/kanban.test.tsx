@@ -629,3 +629,110 @@ describe('KanbanPage', () => {
     });
   });
 });
+
+// "Acessar CRM" na lista de tenants abre /kanban?tenant_id=<id>. O kanban
+// ignorava o parâmetro e mostrava o tenant que já estava ativo.
+describe('KanbanPage — tenant_id na URL', () => {
+  const switchTenant = vi.fn();
+  const contexto = (overrides: Record<string, unknown>) => ({
+    activeTenantId: 'tenant-A',
+    activeTenantName: 'Alpha',
+    availableTenants: [
+      { id: 'tenant-A', nome_negocio: 'Alpha' },
+      { id: 'tenant-B', nome_negocio: 'Beta' },
+      { id: 'tenant-C', nome_negocio: 'Gama' },
+    ],
+    isMultiTenant: true,
+    switchTenant,
+    isLoadingTenants: false,
+    ...overrides,
+  });
+
+  beforeEach(async () => {
+    vi.clearAllMocks();
+    switchTenant.mockReset();
+    const navegacao = await import('next/navigation');
+    (navegacao.useSearchParams as any).mockReturnValue(new URLSearchParams('tenant_id=tenant-B'));
+    (useAuthStore as any).mockReturnValue({
+      session: { email: 'admin@test.com', name: 'Admin', tenantId: 'tenant-A', role: 'GlobalAdmin' },
+      logout: vi.fn(),
+      setSession: vi.fn(),
+    });
+    (LeadService.list as any).mockResolvedValue([]);
+    (LeadService.listSalesByMonth as any).mockResolvedValue([]);
+  });
+
+  afterEach(async () => {
+    const navegacao = await import('next/navigation');
+    (navegacao.useSearchParams as any).mockReturnValue(new URLSearchParams());
+  });
+
+  it('troca para o tenant da URL depois que a lista de tenants carrega, uma vez só', async () => {
+    (useTenant as any).mockReturnValue(contexto({ isLoadingTenants: true }));
+    const { rerender } = render(<KanbanPage />);
+    expect(switchTenant).not.toHaveBeenCalled();
+
+    (useTenant as any).mockReturnValue(contexto({}));
+    rerender(<KanbanPage />);
+    await waitFor(() => expect(switchTenant).toHaveBeenCalledWith('tenant-B'));
+
+    rerender(<KanbanPage />);
+    expect(switchTenant).toHaveBeenCalledTimes(1);
+  });
+
+  it('não desfaz uma troca posterior pelo seletor', async () => {
+    (useTenant as any).mockReturnValue(contexto({}));
+    const { rerender } = render(<KanbanPage />);
+    await waitFor(() => expect(switchTenant).toHaveBeenCalledTimes(1));
+
+    (useTenant as any).mockReturnValue(contexto({ activeTenantId: 'tenant-C', activeTenantName: 'Gama' }));
+    rerender(<KanbanPage />);
+    await act(async () => {});
+
+    expect(switchTenant).toHaveBeenCalledTimes(1);
+  });
+
+  it('não troca quando o tenant da URL já é o ativo, nem depois de uma troca pelo seletor', async () => {
+    (useTenant as any).mockReturnValue(contexto({ activeTenantId: 'tenant-B', activeTenantName: 'Beta' }));
+    const { rerender } = render(<KanbanPage />);
+    await act(async () => {});
+
+    (useTenant as any).mockReturnValue(contexto({ activeTenantId: 'tenant-C', activeTenantName: 'Gama' }));
+    rerender(<KanbanPage />);
+    await act(async () => {});
+
+    expect(switchTenant).not.toHaveBeenCalled();
+  });
+
+  // O kanban montava com o tenant antigo e já buscava os leads dele; a
+  // resposta atrasada podia sobrescrever o quadro do tenant pedido.
+  const tenantsDasBuscas = () => (LeadService.list as any).mock.calls.map((c: unknown[]) => c[3]);
+
+  it('não busca os leads do tenant antigo antes de trocar para o da URL', async () => {
+    switchTenant.mockImplementation((id: string) => {
+      (useTenant as any).mockReturnValue(contexto({ activeTenantId: id, activeTenantName: 'Beta' }));
+    });
+    (useTenant as any).mockReturnValue(contexto({ isLoadingTenants: true }));
+    const { rerender } = render(<KanbanPage />);
+    await act(async () => {});
+
+    (useTenant as any).mockReturnValue(contexto({}));
+    rerender(<KanbanPage />);
+
+    await waitFor(() => expect(tenantsDasBuscas()).toContain('tenant-B'));
+    expect(tenantsDasBuscas()).not.toContain('tenant-A');
+  });
+
+  it('com tenant bloqueado na URL, fica no tenant ativo e carrega os leads dele', async () => {
+    (useTenant as any).mockReturnValue(contexto({
+      availableTenants: [
+        { id: 'tenant-A', nome_negocio: 'Alpha' },
+        { id: 'tenant-B', nome_negocio: 'Beta', is_blocked: true },
+      ],
+    }));
+    render(<KanbanPage />);
+
+    await waitFor(() => expect(tenantsDasBuscas()).toContain('tenant-A'));
+  });
+});
+
