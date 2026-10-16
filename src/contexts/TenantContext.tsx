@@ -3,6 +3,7 @@
 import React, { createContext, useContext, useState, useEffect, useMemo, useCallback } from 'react';
 import { useAuthStore } from '@/store/authStore';
 import { TenantService } from '@/services/api';
+import { ACTIVE_TENANT_CHANGE_EVENT, ACTIVE_TENANT_KEY } from '@/lib/activeTenant';
 
 interface Tenant {
   id: string;
@@ -44,6 +45,14 @@ export const TenantProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       }
     }
   }, [session?.tenantId]);
+
+  // Grava toda mudança, inclusive a escolha automática, e avisa o
+  // PendingTermsGate, que fica fora deste provider e lê o sessionStorage.
+  useEffect(() => {
+    if (!activeTenantId || typeof window === 'undefined') return;
+    sessionStorage.setItem(ACTIVE_TENANT_KEY, activeTenantId);
+    window.dispatchEvent(new CustomEvent(ACTIVE_TENANT_CHANGE_EVENT, { detail: activeTenantId }));
+  }, [activeTenantId]);
 
   const loadTenants = useCallback(async () => {
     setIsLoadingTenants(true);

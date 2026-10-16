@@ -2,9 +2,24 @@
 
 import { useEffect, useRef, useState } from "react";
 import { jwtDecode } from "jwt-decode";
+import { X } from "lucide-react";
 import { useAuthStore } from "@/store/authStore";
 import { TermsService, TermStatusItem } from "@/services/api";
 import { logoutFromHostedUI } from "@/lib/pkce";
+import { ACTIVE_TENANT_CHANGE_EVENT, ACTIVE_TENANT_KEY } from "@/lib/activeTenant";
+
+// Tenants cujo aviso o GlobalAdmin fechou nesta aba.
+const DISMISSED_NOTICE_KEY = "terms-notice-dismissed";
+
+function getDismissedNotices(): string[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const saved = JSON.parse(sessionStorage.getItem(DISMISSED_NOTICE_KEY) || "[]");
+    return Array.isArray(saved) ? saved : [];
+  } catch {
+    return [];
+  }
+}
 
 // Lê o tenant ativo direto do sessionStorage (mesma chave usada por
 // TenantContext.tsx, "active-tenant") em vez de useTenant(): este
@@ -16,7 +31,7 @@ import { logoutFromHostedUI } from "@/lib/pkce";
 // TenantSwitcher em outra parte da árvore.
 function getActiveTenantId(): string | undefined {
   if (typeof window === "undefined") return undefined;
-  return sessionStorage.getItem("active-tenant") || undefined;
+  return sessionStorage.getItem(ACTIVE_TENANT_KEY) || undefined;
 }
 
 // Tenant que a API usa quando a consulta sai sem tenant: o claim do token.
@@ -37,17 +52,28 @@ export default function PendingTermsGate() {
   // Tenant usado na última consulta de status: é o dono do termo pendente e
   // o que o Portal do Cliente precisa ativar para o aceite cair no lugar certo.
   const statusTenantIdRef = useRef<string | undefined>(undefined);
+  const [statusTenantId, setStatusTenantId] = useState<string | undefined>(undefined);
+  const [dismissedNotices, setDismissedNotices] = useState<string[]>(getDismissedNotices);
+  // Só a resposta da consulta mais recente vale: depois de uma troca de
+  // tenant, a resposta atrasada do tenant anterior é descartada.
+  const requestSeqRef = useRef(0);
 
   const fetchStatus = () => {
+    const seq = ++requestSeqRef.current;
     const tenantId = getActiveTenantId();
     // Sem tenant ativo salvo a consulta sai sem tenant e a API resolve pelo
     // token; o redirecionamento leva esse mesmo tenant.
-    statusTenantIdRef.current = tenantId ?? getTokenTenantId(session?.token);
+    const resolvedTenantId = tenantId ?? getTokenTenantId(session?.token);
+    statusTenantIdRef.current = resolvedTenantId;
     TermsService.getStatus(tenantId)
       .then((res) => {
+        if (seq !== requestSeqRef.current) return;
+        setStatusTenantId(resolvedTenantId);
         setPendingItems(res.pending || []);
       })
       .catch((err) => {
+        if (seq !== requestSeqRef.current) return;
+        setStatusTenantId(resolvedTenantId);
         console.error(
           "Erro ao carregar status dos termos:",
           err?.response?.status ?? err?.message ?? "erro desconhecido"
@@ -68,6 +94,11 @@ export default function PendingTermsGate() {
 
   useEffect(() => {
     fetchStatus();
+    // O TenantContext avisa a troca de empresa: consulta na hora, sem esperar
+    // o ciclo de 15 s.
+    const onTenantChange = () => fetchStatus();
+    window.addEventListener(ACTIVE_TENANT_CHANGE_EVENT, onTenantChange);
+    return () => window.removeEventListener(ACTIVE_TENANT_CHANGE_EVENT, onTenantChange);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -80,17 +111,26 @@ export default function PendingTermsGate() {
   const isStatusError = pendingItems?.some((item) => item.type === "error_fallback") ?? false;
   const showGlobalAdminNotice =
     hasOnlyNaoAcionavel && !isStatusError && session?.role === "GlobalAdmin";
+  const noticeDismissed = dismissedNotices.includes(statusTenantId ?? "");
 
-  // Polling de 15s se só houver itens não-acionáveis
+  const dismissNotice = () => {
+    const next = [...dismissedNotices, statusTenantId ?? ""];
+    setDismissedNotices(next);
+    sessionStorage.setItem(DISMISSED_NOTICE_KEY, JSON.stringify(next));
+  };
+
+  // Polling de 15s se só houver itens não-acionáveis (e o aviso não foi fechado)
+  const shouldPoll = hasOnlyNaoAcionavel && !(showGlobalAdminNotice && noticeDismissed);
   useEffect(() => {
-    if (!hasOnlyNaoAcionavel) return;
+    if (!shouldPoll) return;
 
     const intervalId = setInterval(() => {
       fetchStatus();
     }, 15000);
 
     return () => clearInterval(intervalId);
-  }, [hasOnlyNaoAcionavel]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [shouldPoll]);
 
   const handleBackToLogin = () => {
     logout();
@@ -143,12 +183,23 @@ export default function PendingTermsGate() {
   }
 
   if (showGlobalAdminNotice) {
+    if (noticeDismissed) {
+      return null;
+    }
     return (
       <div
         role="status"
-        className="fixed bottom-4 right-4 z-[200] max-w-sm rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900 shadow-lg"
+        className="fixed bottom-4 right-4 z-[200] flex max-w-sm items-start gap-3 rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900 shadow-lg"
       >
-        O termo de contratação desta empresa está pendente. Só um administrador da empresa pode aceitá-lo.
+        <p>O termo de contratação desta empresa está pendente. Só um administrador da empresa pode aceitá-lo.</p>
+        <button
+          type="button"
+          onClick={dismissNotice}
+          aria-label="Fechar aviso"
+          className="shrink-0 rounded p-1 text-amber-700 hover:bg-amber-100 hover:text-amber-900"
+        >
+          <X size={16} aria-hidden="true" />
+        </button>
       </div>
     );
   }

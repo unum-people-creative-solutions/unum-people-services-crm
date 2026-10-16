@@ -1,5 +1,5 @@
-import { render, screen, fireEvent, waitFor } from "@testing-library/react";
-import { vi, describe, it, expect, beforeEach, beforeAll, afterAll } from "vitest";
+import { render, screen, fireEvent, waitFor, act } from "@testing-library/react";
+import { vi, describe, it, expect, beforeEach, afterEach, beforeAll, afterAll } from "vitest";
 import PendingTermsGate from "./PendingTermsGate";
 import { useAuthStore } from "@/store/authStore";
 import { TermsService } from "@/services/api";
@@ -313,5 +313,138 @@ describe("PendingTermsGate", () => {
 
     expect(await screen.findByText("Aguardando aceite do Termo de Contratação")).toBeInTheDocument();
     expect(screen.queryByText(GLOBAL_ADMIN_NOTICE)).not.toBeInTheDocument();
+  });
+
+  // RF-03: o aviso acompanha a empresa selecionada sem esperar o ciclo de 15 s.
+  it("troca do tenant ativo: consulta o novo tenant na hora", async () => {
+    sessionStorage.setItem("active-tenant", "tenant-A");
+    (TermsService.getStatus as any).mockResolvedValue({ pending: [] });
+
+    render(<PendingTermsGate />);
+    await waitFor(() => expect(TermsService.getStatus).toHaveBeenCalledWith("tenant-A"));
+
+    sessionStorage.setItem("active-tenant", "tenant-B");
+    act(() => {
+      window.dispatchEvent(new CustomEvent("active-tenant-change", { detail: "tenant-B" }));
+    });
+
+    await waitFor(() => expect(TermsService.getStatus).toHaveBeenCalledWith("tenant-B"));
+  });
+
+  it("resposta de um tenant anterior não sobrescreve a do tenant atual", async () => {
+    sessionStorage.setItem("active-tenant", "tenant-A");
+    let responderA: (valor: unknown) => void = () => {};
+    (TermsService.getStatus as any)
+      .mockImplementationOnce(() => new Promise((resolve) => { responderA = resolve; }))
+      .mockResolvedValueOnce({ pending: [] });
+
+    const { container } = render(<PendingTermsGate />);
+    sessionStorage.setItem("active-tenant", "tenant-B");
+    act(() => {
+      window.dispatchEvent(new CustomEvent("active-tenant-change", { detail: "tenant-B" }));
+    });
+    await waitFor(() => expect(TermsService.getStatus).toHaveBeenCalledWith("tenant-B"));
+
+    await act(async () => {
+      responderA(pendingContract(false));
+    });
+
+    expect(screen.queryByText("Aguardando aceite do Termo de Contratação")).not.toBeInTheDocument();
+    expect(container.firstChild).toBeNull();
+  });
+
+  // RF-04: o GlobalAdmin pode fechar o aviso.
+  it("GlobalAdmin fecha o aviso: ele não volta para o mesmo tenant, mas volta para outro tenant pendente", async () => {
+    (useAuthStore as any).mockReturnValue({
+      logout: mockLogout,
+      session: { role: "GlobalAdmin", token: fakeJwt({}) },
+    });
+    sessionStorage.setItem("active-tenant", "tenant-A");
+    (TermsService.getStatus as any).mockResolvedValue(pendingContract(false));
+
+    render(<PendingTermsGate />);
+    fireEvent.click(await screen.findByRole("button", { name: "Fechar aviso" }));
+    expect(screen.queryByText(GLOBAL_ADMIN_NOTICE)).not.toBeInTheDocument();
+    // Fechar o aviso nunca pode virar a tela de bloqueio.
+    expect(screen.queryByText("Aguardando aceite do Termo de Contratação")).not.toBeInTheDocument();
+
+    act(() => {
+      window.dispatchEvent(new CustomEvent("active-tenant-change", { detail: "tenant-A" }));
+    });
+    await waitFor(() => expect(TermsService.getStatus).toHaveBeenCalledTimes(2));
+    expect(screen.queryByText(GLOBAL_ADMIN_NOTICE)).not.toBeInTheDocument();
+
+    sessionStorage.setItem("active-tenant", "tenant-B");
+    act(() => {
+      window.dispatchEvent(new CustomEvent("active-tenant-change", { detail: "tenant-B" }));
+    });
+    expect(await screen.findByText(GLOBAL_ADMIN_NOTICE)).toBeInTheDocument();
+  });
+
+  it("aviso fechado continua fechado depois de recarregar a página na mesma aba", async () => {
+    (useAuthStore as any).mockReturnValue({
+      logout: mockLogout,
+      session: { role: "GlobalAdmin", token: fakeJwt({}) },
+    });
+    sessionStorage.setItem("active-tenant", "tenant-A");
+    (TermsService.getStatus as any).mockResolvedValue(pendingContract(false));
+
+    const primeira = render(<PendingTermsGate />);
+    fireEvent.click(await screen.findByRole("button", { name: "Fechar aviso" }));
+    primeira.unmount();
+
+    const { container } = render(<PendingTermsGate />);
+    await waitFor(() => expect(TermsService.getStatus).toHaveBeenCalledTimes(2));
+    await act(async () => {});
+
+    expect(screen.queryByText(GLOBAL_ADMIN_NOTICE)).not.toBeInTheDocument();
+    expect(screen.queryByText("Aguardando aceite do Termo de Contratação")).not.toBeInTheDocument();
+    expect(container.firstChild).toBeNull();
+  });
+
+  describe("consulta a cada 15 s", () => {
+    beforeEach(() => {
+      vi.useFakeTimers();
+    });
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    const esperarConsultas = async (ms: number) => {
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(ms);
+      });
+    };
+
+    it("continua consultando enquanto só há pendência que a pessoa não pode aceitar", async () => {
+      (useAuthStore as any).mockReturnValue({
+        logout: mockLogout,
+        session: { role: "TenantAdmin", token: fakeJwt({}) },
+      });
+      (TermsService.getStatus as any).mockResolvedValue(pendingContract(false));
+
+      render(<PendingTermsGate />);
+      await esperarConsultas(0);
+      expect(TermsService.getStatus).toHaveBeenCalledTimes(1);
+
+      await esperarConsultas(15000);
+      expect(TermsService.getStatus).toHaveBeenCalledTimes(2);
+    });
+
+    it("para de consultar quando o GlobalAdmin fecha o aviso", async () => {
+      (useAuthStore as any).mockReturnValue({
+        logout: mockLogout,
+        session: { role: "GlobalAdmin", token: fakeJwt({}) },
+      });
+      sessionStorage.setItem("active-tenant", "tenant-A");
+      (TermsService.getStatus as any).mockResolvedValue(pendingContract(false));
+
+      render(<PendingTermsGate />);
+      await esperarConsultas(0);
+      fireEvent.click(screen.getByRole("button", { name: "Fechar aviso" }));
+
+      await esperarConsultas(45000);
+      expect(TermsService.getStatus).toHaveBeenCalledTimes(1);
+    });
   });
 });
