@@ -1,8 +1,7 @@
-import { render, screen, waitFor, fireEvent } from '@testing-library/react';
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { render, screen } from '@testing-library/react';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import TabTeam from './TabTeam';
 import { TenantService } from '@/services/api';
-import { useAuthStore } from '@/store/authStore';
 import { useTenant } from '@/contexts/TenantContext';
 
 vi.mock('@/services/api', () => ({
@@ -13,56 +12,48 @@ vi.mock('@/services/api', () => ({
     removeUser: vi.fn(),
   },
 }));
-vi.mock('@/store/authStore', () => ({ useAuthStore: vi.fn() }));
 vi.mock('@/contexts/TenantContext', () => ({ useTenant: vi.fn() }));
 
-// riscos-acesso-empresa RF-08: a aba lista a empresa selecionada e, antes,
-// convidava, mudava papel e removia na empresa do token. As três ações levam
-// agora a empresa selecionada.
-describe('TabTeam — empresa selecionada', () => {
+// gestao-de-acesso-f3-portal-cliente RF-21, CA-11: a equipe passa a ser gerida
+// no Portal do Cliente; a aba vira um link para a tela Usuários, na empresa ativa.
+describe('TabTeam — equipe no Portal do Cliente', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.spyOn(window, 'confirm').mockReturnValue(true);
-    (useAuthStore as any).mockReturnValue({ session: { role: 'TenantAdmin', email: 'admin@x.com' } });
-    (useTenant as any).mockReturnValue({ activeTenantId: 'tenant-B' });
-    (TenantService.listUsers as any).mockResolvedValue([
-      { email: 'admin@x.com', name: 'Admin', role: 'admin' },
-      { email: 'outro@x.com', name: 'Outro', role: 'admin' },
-      { email: 'membro@x.com', name: 'Membro', role: 'user' },
-    ]);
-    (TenantService.addUser as any).mockResolvedValue({});
-    (TenantService.updateUserRole as any).mockResolvedValue({});
-    (TenantService.removeUser as any).mockResolvedValue({});
+    vi.mocked(useTenant).mockReturnValue({ activeTenantId: 'tenant-B' } as ReturnType<typeof useTenant>);
   });
+  afterEach(() => vi.unstubAllEnvs());
 
-  it('convidar manda a empresa selecionada', async () => {
+  it('explica a mudança e leva à tela Usuários do Portal na empresa ativa', () => {
+    vi.stubEnv('NEXT_PUBLIC_CUSTOMERS_URL', '');
     render(<TabTeam />);
-    await screen.findByText('membro@x.com');
-
-    fireEvent.click(screen.getByRole('button', { name: /Convidar Membro/i }));
-    fireEvent.change(screen.getByPlaceholderText('Ex: Ana Silva'), { target: { value: 'Nova Pessoa' } });
-    fireEvent.change(screen.getByPlaceholderText('ana@empresa.com'), { target: { value: 'nova@x.com' } });
-    fireEvent.click(screen.getByRole('button', { name: /Enviar Convite/i }));
-
-    await waitFor(() => expect(TenantService.addUser).toHaveBeenCalled());
-    expect(TenantService.addUser).toHaveBeenCalledWith(
-      { name: 'Nova Pessoa', email: 'nova@x.com', role: 'user' },
-      'tenant-B',
+    expect(screen.getByRole('heading', { name: 'A equipe agora fica no Portal do Cliente' })).toBeInTheDocument();
+    expect(screen.getByText('Lá você convida pessoas e escolhe o que cada uma pode fazer no CRM, no Blog e nas Páginas.')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Abrir Usuários no Portal' })).toHaveAttribute(
+      'href',
+      'https://customer.unumpeople.com.br/usuarios?tenant_id=tenant-B',
     );
   });
 
-  it('mudar papel e remover mandam a empresa selecionada', async () => {
+  it('usa NEXT_PUBLIC_CUSTOMERS_URL e codifica a empresa', () => {
+    vi.stubEnv('NEXT_PUBLIC_CUSTOMERS_URL', 'http://localhost:3002');
+    vi.mocked(useTenant).mockReturnValue({ activeTenantId: 'a b&c' } as ReturnType<typeof useTenant>);
     render(<TabTeam />);
-    await screen.findByText('membro@x.com');
+    expect(screen.getByRole('link', { name: 'Abrir Usuários no Portal' })).toHaveAttribute(
+      'href',
+      'http://localhost:3002/usuarios?tenant_id=a%20b%26c',
+    );
+  });
 
-    const papeis = screen.getAllByRole('button', { name: 'Alterar Acesso' });
-    fireEvent.click(papeis[papeis.length - 1]);
-    await waitFor(() => expect(TenantService.updateUserRole).toHaveBeenCalled());
-    expect(TenantService.updateUserRole).toHaveBeenCalledWith('membro@x.com', 'TenantAdmin', 'tenant-B');
+  it('sem empresa ativa, o link vai sem tenant_id', () => {
+    vi.stubEnv('NEXT_PUBLIC_CUSTOMERS_URL', '');
+    vi.mocked(useTenant).mockReturnValue({ activeTenantId: '' } as ReturnType<typeof useTenant>);
+    render(<TabTeam />);
+    expect(screen.getByRole('link', { name: 'Abrir Usuários no Portal' })).toHaveAttribute('href', 'https://customer.unumpeople.com.br/usuarios');
+  });
 
-    const remocoes = screen.getAllByRole('button', { name: 'Remover Membro' });
-    fireEvent.click(remocoes[remocoes.length - 1]);
-    await waitFor(() => expect(TenantService.removeUser).toHaveBeenCalled());
-    expect(TenantService.removeUser).toHaveBeenCalledWith('membro@x.com', 'tenant-B');
+  it('a aba não lista, não convida, não muda papel e não remove mais', () => {
+    render(<TabTeam />);
+    expect(TenantService.listUsers).not.toHaveBeenCalled();
+    expect(screen.queryByRole('button', { name: /Convidar/ })).not.toBeInTheDocument();
   });
 });
