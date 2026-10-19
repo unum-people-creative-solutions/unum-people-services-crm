@@ -96,6 +96,18 @@ describe('AcessosProvider', () => {
     expect(screen.getByText('crm.lead.excluir: false')).toBeInTheDocument();
   });
 
+  it('na troca de empresa, as permissões da anterior deixam de valer antes da resposta nova', async () => {
+    (AcessosService.get as any).mockImplementation((id: string) =>
+      id === 't1' ? Promise.resolve(acessosCom('t1', todas)) : new Promise(() => {}),
+    );
+    const { rerender } = render(<AcessosProvider><Sonda /></AcessosProvider>);
+    await waitFor(() => expect(screen.getByText('crm.lead.excluir: true')).toBeInTheDocument());
+    tenantAtivo('t2');
+    rerender(<AcessosProvider><Sonda /></AcessosProvider>);
+    expect(screen.getByText('carregando: true')).toBeInTheDocument();
+    for (const p of todas) expect(screen.getByText(`${p}: false`)).toBeInTheDocument();
+  });
+
   it('sem empresa ativa, não lê e nada vale', () => {
     tenantAtivo('');
     render(<AcessosProvider><Sonda /></AcessosProvider>);

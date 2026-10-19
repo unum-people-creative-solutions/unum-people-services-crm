@@ -68,7 +68,8 @@ function acessos(crm: string[], papel = 'personalizado'): MeusAcessos {
   };
 }
 
-const lead = { id: 'lead-1', nome: 'João Silva', telefone: '11988887777', status: 'NOVO', sales: [] };
+// Ganho: o detalhe do lead ganho é o único que oferece "Registrar venda".
+const lead = { id: 'lead-1', nome: 'João Silva', telefone: '11988887777', status: 'GANHO', sales: [] };
 
 function renderKanban() {
   return render(
@@ -103,7 +104,7 @@ describe('Kanban segue as permissões do CRM', () => {
       isLoadingTenants: false,
     });
     (TenantService.listMyTenants as any).mockResolvedValue([{ id: 'tenant-1', nome_negocio: 'Unum Teste' }]);
-    (LeadService.list as any).mockImplementation((status: string) => Promise.resolve(status === 'NOVO' ? [lead] : []));
+    (LeadService.list as any).mockImplementation((status: string) => Promise.resolve(status === 'GANHO' ? [lead] : []));
     (LeadService.listSalesByMonth as any).mockResolvedValue([]);
   });
 
@@ -118,6 +119,7 @@ describe('Kanban segue as permissões do CRM', () => {
     await user.click(await screen.findByRole('button', { name: 'Editar lead' }));
     expect(screen.getByRole('button', { name: 'Excluir lead' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Salvar Alterações' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Registrar venda' })).toBeInTheDocument();
     await abrirMenu(user);
     expect(screen.getAllByRole('button', { name: /Novo Lead Manual/i }).length).toBeGreaterThan(0);
     expect(screen.getAllByRole('button', { name: /Registrar Nova Venda/i }).length).toBeGreaterThan(0);
@@ -132,6 +134,7 @@ describe('Kanban segue as permissões do CRM', () => {
     await user.click(await screen.findByRole('button', { name: 'Editar lead' }));
     expect(screen.queryByRole('button', { name: 'Excluir lead' })).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Salvar Alterações' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Registrar venda' })).toBeInTheDocument();
     await abrirMenu(user);
     expect(screen.getAllByRole('button', { name: /Novo Lead Manual/i }).length).toBeGreaterThan(0);
     expect(screen.getAllByRole('button', { name: /Registrar Nova Venda/i }).length).toBeGreaterThan(0);
