@@ -50,11 +50,8 @@ function AuthCallbackContent() {
       const decoded: any = jwtDecode(tokens.id_token);
       const groups = decoded["cognito:groups"] || [];
       const isGlobalAdmin = groups.includes("GlobalAdmin");
-      const isTenantAdmin = groups.includes("TenantAdmin");
-
-      let role = "USER";
-      if (isGlobalAdmin) role = "GlobalAdmin";
-      else if (isTenantAdmin) role = "TenantAdmin";
+      // gestao-de-acesso-f5 RF-07: o grupo TenantAdmin não vira papel; só o operador é marcado.
+      const role = isGlobalAdmin ? "GlobalAdmin" : "USER";
 
       const sessionData = {
         email: decoded.email,
