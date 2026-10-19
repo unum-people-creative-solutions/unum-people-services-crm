@@ -120,4 +120,42 @@ describe('AcessosProvider', () => {
     expect(screen.getByText('carregando: false')).toBeInTheDocument();
     for (const p of todas) expect(screen.getByText(`${p}: false`)).toBeInTheDocument();
   });
+
+  // gestao-de-acesso-f5 RF-07: Configurações decide a aba Equipe pela permissão do Portal, não por grupo ou role.
+  it('podeNoPortal vale só o que a ferramenta portal traz, e nega enquanto carrega ou na falha', async () => {
+    function SondaDoPortal() {
+      const { podeNoPortal } = useAcessosDoCRM();
+      return <p>portal.usuarios.gerir: {String(podeNoPortal('portal.usuarios.gerir'))}</p>;
+    }
+    const comGerir: MeusAcessos = {
+      tenant_id: 't1',
+      operador: false,
+      ferramentas: [
+        { id: 'portal', nome: 'Portal do Cliente', contratada: true, papel: { id: 'administrador', nome: 'Administrador', sistema: true, implicito: false }, permissoes: ['portal.empresa.ver', 'portal.usuarios.gerir'] },
+        { id: 'crm', nome: 'CRM', contratada: true, papel: null, permissoes: ['portal.usuarios.gerir'] },
+      ],
+    };
+    (AcessosService.get as any).mockReturnValue(new Promise(() => {}));
+    const { unmount } = render(<AcessosProvider><SondaDoPortal /></AcessosProvider>);
+    expect(screen.getByText('portal.usuarios.gerir: false')).toBeInTheDocument();
+    unmount();
+
+    (AcessosService.get as any).mockResolvedValue(comGerir);
+    const r2 = render(<AcessosProvider><SondaDoPortal /></AcessosProvider>);
+    await waitFor(() => expect(screen.getByText('portal.usuarios.gerir: true')).toBeInTheDocument());
+    r2.unmount();
+
+    // Membro: a permissão aparece só em outra ferramenta, não vale.
+    (AcessosService.get as any).mockResolvedValue({ ...comGerir, ferramentas: [{ ...comGerir.ferramentas[0], permissoes: ['portal.empresa.ver'] }, comGerir.ferramentas[1]] });
+    const r3 = render(<AcessosProvider><SondaDoPortal /></AcessosProvider>);
+    await waitFor(() => expect(AcessosService.get).toHaveBeenCalledTimes(3));
+    await act(async () => {});
+    expect(screen.getByText('portal.usuarios.gerir: false')).toBeInTheDocument();
+    r3.unmount();
+
+    (AcessosService.get as any).mockRejectedValue(new Error('rede'));
+    render(<AcessosProvider><SondaDoPortal /></AcessosProvider>);
+    await act(async () => {});
+    expect(screen.getByText('portal.usuarios.gerir: false')).toBeInTheDocument();
+  });
 });

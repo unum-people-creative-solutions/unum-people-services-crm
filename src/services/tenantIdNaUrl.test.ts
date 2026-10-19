@@ -46,9 +46,6 @@ describe('ID do tenant na query', () => {
     ['LeadService.delete', () => api.LeadService.delete('l1', id)],
     ['TermsService.getStatus', () => api.TermsService.getStatus(id)],
     // riscos-acesso-empresa RF-08: a equipe age na empresa selecionada.
-    ['TenantService.addUser', () => api.TenantService.addUser({ name: 'N', email: 'n@x.com', role: 'user' }, id)],
-    ['TenantService.updateUserRole', () => api.TenantService.updateUserRole('n@x.com', 'user', id)],
-    ['TenantService.removeUser', () => api.TenantService.removeUser('n@x.com', id)],
     ['NotificationService.subscribe', () => notificacoes.NotificationService.subscribe(subscription, id)],
     ['NotificationService.checkStatus', () => notificacoes.NotificationService.checkStatus('https://x', id)],
     ['NotificationService.unsubscribe', () => notificacoes.NotificationService.unsubscribe('https://x', id)],

@@ -3,7 +3,7 @@
 import { Users, ExternalLink } from "lucide-react";
 import { useTenant } from "@/contexts/TenantContext";
 
-// gestao-de-acesso-f3-portal-cliente RF-21: a equipe é gerida no Portal do Cliente; os métodos de /tenant/users em services/api ficam até a fase 5.
+// gestao-de-acesso-f3-portal-cliente RF-21: a equipe é gerida no Portal do Cliente (a equipe antiga do CRM saiu na fase 5).
 export default function TabTeam() {
   const { activeTenantId } = useTenant();
   const base =
