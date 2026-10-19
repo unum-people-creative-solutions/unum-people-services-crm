@@ -3,7 +3,7 @@ import { describe, it, expect, vi } from 'vitest';
 import AdminLayout from './layout';
 import { useTenant } from '@/contexts/TenantContext';
 import { useAuthStore } from '@/store/authStore';
-import { TenantService } from '@/services/api';
+import { AcessosService, TenantService } from '@/services/api';
 
 vi.mock('@/store/authStore', () => ({
   useAuthStore: vi.fn(),
@@ -13,6 +13,9 @@ vi.mock('@/services/api', () => ({
   TenantService: {
     list: vi.fn(),
     listMyTenants: vi.fn(),
+  },
+  AcessosService: {
+    get: vi.fn(() => new Promise(() => {})),
   },
 }));
 
@@ -36,5 +39,20 @@ describe('(admin) layout', () => {
     );
 
     expect(await screen.findByTestId('probe')).toBeInTheDocument();
+  });
+
+  // gestao-de-acesso-f4 RF-05: o Google Ads da Navbar lê as permissões da empresa ativa.
+  it('deve envolver os filhos com AcessosProvider, que lê /me/acessos da empresa ativa', async () => {
+    (useAuthStore as any).mockReturnValue({ session: { tenantId: 't-1', role: 'GlobalAdmin' } });
+    (TenantService.list as any).mockResolvedValue([]);
+
+    render(
+      <AdminLayout>
+        <Probe />
+      </AdminLayout>
+    );
+
+    await screen.findByTestId('probe');
+    expect(AcessosService.get).toHaveBeenCalledWith('t-1');
   });
 });
