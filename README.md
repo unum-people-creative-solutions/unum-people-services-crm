@@ -37,7 +37,7 @@ Não existe mais tela de login/esqueci-senha/primeiro-acesso própria do app —
 - **API Key Management**: Visualização e cópia da chave de integração programática diretamente na lista de gestão de Tenants.
 - **Notificações Push**: Botão para ativar/desativar notificações push por inquilino diretamente na lista administrativa.
 - **Dashboard Global**: Visualização de todos os inquilinos e seus respectivos faturamentos (Apenas para GlobalAdmin).
-- **Equipe:** a aba Equipe das Configurações só leva à tela Usuários do Portal do Cliente (`NEXT_PUBLIC_CUSTOMERS_URL/usuarios?tenant_id=<empresa ativa>`, padrão `https://customer.unumpeople.com.br`). Lá a empresa convida pessoas e escolhe o que cada uma pode fazer em cada ferramenta (gestão de acesso, fase 3). Os métodos de `/tenant/users` em `src/services/api.ts` ficam até a fase 5.
+- **Equipe:** a aba Equipe das Configurações só leva à tela Usuários do Portal do Cliente (`NEXT_PUBLIC_CUSTOMERS_URL/usuarios?tenant_id=<empresa ativa>`, padrão `https://customer.unumpeople.com.br`). Lá a empresa convida pessoas e escolhe o que cada uma pode fazer em cada ferramenta (gestão de acesso, fase 3). A aba aparece para quem tem `portal.usuarios.gerir` na empresa ativa (lido de `/me/acessos`) ou é operador; desde a fase 5 o CRM não deriva papel do grupo `TenantAdmin`, e os métodos de `/tenant/users` saíram.
 
 ## 5. User Experience (UX)
 - **Mobile First & PWA Ready:** Interface otimizada com **Menu Principal Expansível** e Navegação Full-Screen via gestos (Framer Motion).

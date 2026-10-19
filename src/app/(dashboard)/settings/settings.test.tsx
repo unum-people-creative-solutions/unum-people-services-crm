@@ -42,13 +42,14 @@ vi.mock('@/contexts/TenantContext', () => ({
   useTenant: vi.fn(),
 }));
 
+const podeNoPortal = vi.hoisted(() => vi.fn());
+vi.mock('@/contexts/AcessosContext', () => ({
+  useAcessosDoCRM: () => ({ carregando: false, erro: false, pode: () => false, podeNoPortal }),
+}));
+
 vi.mock('@/services/api', () => ({
   TenantService: {
     deleteAccount: vi.fn().mockResolvedValue({}),
-    listUsers: vi.fn().mockResolvedValue([]),
-    updateUserRole: vi.fn().mockResolvedValue({}),
-    removeUser: vi.fn().mockResolvedValue({}),
-    addUser: vi.fn().mockResolvedValue({}),
   }
 }));
 
@@ -76,6 +77,7 @@ describe('SettingsPage', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    podeNoPortal.mockImplementation((p: string) => p === 'portal.usuarios.gerir');
     (useAuthStore as any).mockReturnValue({ session: mockSession });
     // Reset para o mock padrão do hook
     (pushHooks.usePushNotifications as any).mockReturnValue({
@@ -180,20 +182,31 @@ describe('SettingsPage', () => {
       expect(screen.getByText('jared@test.com')).toBeInTheDocument();
     });
 
-    it('T02 - deve ocultar a aba "Equipe" para usuários comuns (role: user)', () => {
-      // Setup role user
+    // gestao-de-acesso-f5 RF-07: a aba Equipe depende de portal.usuarios.gerir, não do role nem do grupo TenantAdmin.
+    it('T02 - oculta a aba "Equipe" sem portal.usuarios.gerir, mesmo com role ou grupo antigo de admin', () => {
+      podeNoPortal.mockReturnValue(false);
+      const token = `x.${btoa(JSON.stringify({ 'cognito:groups': ['TenantAdmin', 'admin'] }))}.y`;
       (useAuthStore as any).mockReturnValue({
-        session: { ...mockSession, role: 'user' }
+        session: { ...mockSession, role: 'TenantAdmin', token }
       });
       render(<SettingsPage />);
-      
+
       expect(screen.queryByRole('tab', { name: /equipe/i })).not.toBeInTheDocument();
     });
 
-    it('T02 - deve exibir a aba "Equipe" para admins', () => {
-      // Setup role admin (já é o default do mock)
+    it('T02 - exibe a aba "Equipe" para quem tem portal.usuarios.gerir na empresa ativa', () => {
+      (useAuthStore as any).mockReturnValue({ session: { ...mockSession, role: 'USER' } });
       render(<SettingsPage />);
-      
+
+      expect(podeNoPortal).toHaveBeenCalledWith('portal.usuarios.gerir');
+      expect(screen.getByRole('tab', { name: /equipe/i })).toBeInTheDocument();
+    });
+
+    it('T02 - exibe a aba "Equipe" para o operador (GlobalAdmin)', () => {
+      podeNoPortal.mockReturnValue(false);
+      (useAuthStore as any).mockReturnValue({ session: { ...mockSession, role: 'GlobalAdmin' } });
+      render(<SettingsPage />);
+
       expect(screen.getByRole('tab', { name: /equipe/i })).toBeInTheDocument();
     });
 
@@ -210,7 +223,6 @@ describe('SettingsPage', () => {
         expect.stringMatching(/\/usuarios\?tenant_id=t-123$/),
       );
       expect(screen.queryByRole('button', { name: /convidar membro/i })).not.toBeInTheDocument();
-      expect(TenantService.listUsers).not.toHaveBeenCalled();
     });
   });
 });

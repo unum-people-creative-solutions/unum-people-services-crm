@@ -161,26 +161,6 @@ export const TenantService = {
     const response = await api.delete('/me/account');
     return response.data;
   },
-  listUsers: async (tenantId?: string) => {
-    const params = new URLSearchParams();
-    if (tenantId) params.append('tenant_id', tenantId);
-    const response = await api.get(`/tenant/users${params.toString() ? '?' + params.toString() : ''}`);
-    return response.data;
-  },
-
-  // tenantId: a empresa selecionada, a mesma que listUsers mostra.
-  addUser: async (data: { name: string; email: string; role: string }, tenantId: string) => {
-    const response = await api.post(`/tenant/users?tenant_id=${encodeURIComponent(tenantId)}`, data);
-    return response.data;
-  },
-  updateUserRole: async (email: string, role: string, tenantId: string) => {
-    const response = await api.patch(`/tenant/users?email=${encodeURIComponent(email)}&tenant_id=${encodeURIComponent(tenantId)}`, { role });
-    return response.data;
-  },
-  removeUser: async (email: string, tenantId: string) => {
-    const response = await api.delete(`/tenant/users?email=${encodeURIComponent(email)}&tenant_id=${encodeURIComponent(tenantId)}`);
-    return response.data;
-  }
 };
 
 export interface TermStatusItem {

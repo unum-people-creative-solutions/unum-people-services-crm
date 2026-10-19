@@ -6,24 +6,14 @@ import { Shield, User, Users } from "lucide-react";
 import Navbar from "@/components/Navbar";
 import TabMyAccount from "./_components/TabMyAccount";
 import TabTeam from "./_components/TabTeam";
-import { jwtDecode } from "jwt-decode";
+import { useAcessosDoCRM } from "@/contexts/AcessosContext";
 
 export default function SettingsPage() {
   const { session } = useAuthStore();
   const [activeTab, setActiveTab] = useState("my-account");
-
-  let isTokenAdmin = false;
-  try {
-    if (session?.token) {
-      const decoded: any = jwtDecode(session.token);
-      const groups = decoded["cognito:groups"] || [];
-      isTokenAdmin = groups.includes("TenantAdmin") || groups.includes("admin") || groups.includes("GlobalAdmin");
-    }
-  } catch (e) {
-    console.warn("Erro ao decodificar token", e);
-  }
-
-  const isAdmin = isTokenAdmin || ["admin", "tenantadmin", "globaladmin"].includes(session?.role?.toLowerCase() || "");
+  const { podeNoPortal } = useAcessosDoCRM();
+  // gestao-de-acesso-f5 RF-07: a aba Equipe (link para o Portal) aparece para quem gere usuários no Portal, nunca por grupo ou role antigo.
+  const podeVerEquipe = session?.role === "GlobalAdmin" || podeNoPortal("portal.usuarios.gerir");
 
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col text-gray-900">
@@ -56,7 +46,7 @@ export default function SettingsPage() {
             <User size={18} /> Minha Conta
           </button>
 
-          {isAdmin && (
+          {podeVerEquipe && (
             <button
               role="tab"
               aria-selected={activeTab === "team"}
@@ -75,7 +65,7 @@ export default function SettingsPage() {
         {/* Tab Content */}
         <div role="tabpanel">
           {activeTab === "my-account" && <TabMyAccount />}
-          {activeTab === "team" && isAdmin && <TabTeam />}
+          {activeTab === "team" && podeVerEquipe && <TabTeam />}
         </div>
       </main>
     </div>

@@ -200,4 +200,23 @@ describe('AuthCallbackPage (TASK-FE-CRM-002)', () => {
 
     expect(redirectToHostedUI).toHaveBeenCalled();
   });
+
+  // gestao-de-acesso-f5 RF-07: o grupo TenantAdmin não vira papel na sessão; só o operador é marcado.
+  it('grupo TenantAdmin no token não vira role; GlobalAdmin vira', async () => {
+    for (const [grupos, role] of [[['TenantAdmin'], 'USER'], [['TenantAdmin', 'Admins'], 'USER'], [['GlobalAdmin'], 'GlobalAdmin']] as const) {
+      vi.clearAllMocks();
+      (useRouter as any).mockReturnValue({ push: mockPush });
+      (useAuthStore as any).mockImplementation((selector: any) => selector({ setSession: mockSetSession }));
+      (exchangeCodeForTokens as any).mockResolvedValue({ id_token: 'id-token-abc', access_token: 'a', expires_in: 3600, token_type: 'Bearer' });
+      (jwtDecode as any).mockReturnValue({ email: 'user@example.com', 'custom:tenant_id': 't1', 'cognito:groups': grupos });
+      window.sessionStorage.setItem('pkce_code_verifier', 'verifier-abc');
+      (useSearchParams as any).mockReturnValue(makeSearchParams('auth-code-123'));
+      (TenantService.listMyTenants as any).mockResolvedValue([{ id: 't1', nome_negocio: 'E1' }]);
+
+      const { unmount } = render(<AuthCallbackPage />);
+      await waitFor(() => expect(mockSetSession).toHaveBeenCalled());
+      expect(mockSetSession.mock.calls[0][0].role).toBe(role);
+      unmount();
+    }
+  });
 });

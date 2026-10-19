@@ -1,17 +1,8 @@
 import { render, screen } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import TabTeam from './TabTeam';
-import { TenantService } from '@/services/api';
 import { useTenant } from '@/contexts/TenantContext';
 
-vi.mock('@/services/api', () => ({
-  TenantService: {
-    listUsers: vi.fn(),
-    addUser: vi.fn(),
-    updateUserRole: vi.fn(),
-    removeUser: vi.fn(),
-  },
-}));
 vi.mock('@/contexts/TenantContext', () => ({ useTenant: vi.fn() }));
 
 // gestao-de-acesso-f3-portal-cliente RF-21, CA-11: a equipe passa a ser gerida
@@ -53,7 +44,6 @@ describe('TabTeam — equipe no Portal do Cliente', () => {
 
   it('a aba não lista, não convida, não muda papel e não remove mais', () => {
     render(<TabTeam />);
-    expect(TenantService.listUsers).not.toHaveBeenCalled();
     expect(screen.queryByRole('button', { name: /Convidar/ })).not.toBeInTheDocument();
   });
 });
