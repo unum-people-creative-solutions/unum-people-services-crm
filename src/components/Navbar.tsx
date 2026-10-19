@@ -12,6 +12,7 @@ import {
 import { motion, AnimatePresence } from "framer-motion";
 import { getGoogleAdsAuthUrl } from "@/lib/google-ads";
 import { useTenant } from "@/contexts/TenantContext";
+import { useAcessosDoCRM } from "@/contexts/AcessosContext";
 import { logoutFromHostedUI } from "@/lib/pkce";
 import pkg from "../../package.json";
 
@@ -42,6 +43,8 @@ export default function Navbar({
     isMultiTenant,
     switchTenant,
   } = useTenant();
+  const { pode } = useAcessosDoCRM();
+  const mostrarConexaoAds = session?.role === "GlobalAdmin" || pode("crm.integracoes.gerir");
 
   // Bloquear scroll quando menu mobile estiver aberto
   useEffect(() => {
@@ -298,9 +301,11 @@ export default function Navbar({
                               <ExternalLink size={14} /> Externo
                             </div>
                             <div className="grid gap-2">
-                              <a href={adsUrl} className="flex items-center gap-4 px-6 py-4 text-base font-bold text-primary-600 bg-primary-50/50 rounded-xl transition-colors">
-                                <ExternalLink size={22} /> {session?.role === "GlobalAdmin" ? "Conectar MCC Agência" : "Conectar Google Ads"}
-                              </a>
+                              {mostrarConexaoAds && (
+                                <a href={adsUrl} className="flex items-center gap-4 px-6 py-4 text-base font-bold text-primary-600 bg-primary-50/50 rounded-xl transition-colors">
+                                  <ExternalLink size={22} /> {session?.role === "GlobalAdmin" ? "Conectar MCC Agência" : "Conectar Google Ads"}
+                                </a>
+                              )}
                               <a href="http://docs.unumpeople.com.br/crm/" target="_blank" rel="noopener noreferrer" className="flex items-center gap-4 px-6 py-4 text-base font-bold text-gray-600 hover:bg-gray-50 rounded-xl transition-colors">
                                 <HelpCircle size={22} className="text-gray-400" /> Central de Ajuda
                               </a>
@@ -388,9 +393,11 @@ export default function Navbar({
                         <div className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1 flex items-center gap-2">
                           <ExternalLink size={10} /> Externo
                         </div>
-                        <a href={adsUrl} className="flex items-center gap-3 px-4 py-2.5 text-sm font-bold text-primary-600 hover:bg-primary-50 rounded-lg transition-colors">
-                          <ExternalLink size={18} /> {session?.role === "GlobalAdmin" ? "Conectar MCC Agência" : "Conectar Google Ads"}
-                        </a>
+                        {mostrarConexaoAds && (
+                          <a href={adsUrl} className="flex items-center gap-3 px-4 py-2.5 text-sm font-bold text-primary-600 hover:bg-primary-50 rounded-lg transition-colors">
+                            <ExternalLink size={18} /> {session?.role === "GlobalAdmin" ? "Conectar MCC Agência" : "Conectar Google Ads"}
+                          </a>
+                        )}
                         <a href="http://docs.unumpeople.com.br/crm/" target="_blank" rel="noopener noreferrer" className="flex items-center gap-3 px-4 py-2.5 text-sm font-bold text-gray-600 hover:bg-gray-50 rounded-lg transition-colors">
                           <HelpCircle size={18} className="text-gray-400" /> Central de Ajuda
                         </a>

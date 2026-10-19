@@ -3,9 +3,10 @@
 import { useEffect, useState, useRef, Suspense, useCallback } from "react";
 import { useSearchParams } from "next/navigation";
 import { DragDropContext, Droppable, Draggable } from "@hello-pangea/dnd";
-import api, { LeadService, TenantService, LeadData, MonthSale } from "@/services/api";
+import api, { LeadService, TenantService, LeadData, MonthSale, mensagemDeErro } from "@/services/api";
 import { useAuthStore } from "@/store/authStore";
 import { useTenant } from "@/contexts/TenantContext";
+import { useAcessosDoCRM } from "@/contexts/AcessosContext";
 import { Plus, X, LogOut, Settings, DollarSign, AlertCircle, Calendar, Eye, EyeOff, Users, Edit2, Mail, Phone, User, Search, TrendingUp, RefreshCw, HelpCircle, Tag, ExternalLink, LayoutGrid, ArrowRightLeft, MessageCircle, Clock, Trash2, AlertTriangle } from "lucide-react";
 import { logoutFromHostedUI } from "@/lib/pkce";
 
@@ -123,6 +124,11 @@ function KanbanContent() {
     switchTenant,
     isLoadingTenants,
   } = useTenant();
+
+  // Negar enquanto carrega, com erro, ou sem a permissão.
+  const { carregando: carregandoAcessos, erro: erroAcessos, pode } = useAcessosDoCRM();
+  const podeEditar = pode("crm.lead.editar");
+  const podeVer = pode("crm.lead.ver");
 
   // "Acessar CRM" na lista de tenants abre /kanban?tenant_id=<id>. Aplica uma
   // vez por valor, depois que a lista carrega (o switchTenant recusa tenant
@@ -310,6 +316,8 @@ function KanbanContent() {
 
   const loadLeads = useCallback(async (statusListOrSilent: string[] | boolean = COLUMNS.map(c => c.id), silentParam = false) => {
     if (!activeTenantId) return;
+    // Leads e vendas só com ver, ou se a leitura das permissões falhou.
+    if (carregandoAcessos || (!erroAcessos && !podeVer)) return;
 
     const statusList = Array.isArray(statusListOrSilent) ? statusListOrSilent : COLUMNS.map(c => c.id);
     const silent = typeof statusListOrSilent === 'boolean' ? statusListOrSilent : silentParam;
@@ -359,10 +367,10 @@ function KanbanContent() {
     } finally { 
       if (!silent) setLoading(false); 
     }
-  }, [activeTenantId, selectedYear, selectedMonth]);
+  }, [activeTenantId, selectedYear, selectedMonth, carregandoAcessos, erroAcessos, podeVer]);
 
   useEffect(() => {
-    if (activeTenantId && !waitingForRequestedTenant) {
+    if (activeTenantId && !waitingForRequestedTenant && !carregandoAcessos && (podeVer || erroAcessos)) {
       const tenantChanged = activeTenantId !== prevTenantId.current;
       const dateChanged = selectedMonth !== prevMonth.current || selectedYear !== prevYear.current;
 
@@ -390,7 +398,7 @@ function KanbanContent() {
         }
       }
     }
-  }, [selectedMonth, selectedYear, activeTenantId, availableTenants, loadLeads, session, setSession, waitingForRequestedTenant]);
+  }, [selectedMonth, selectedYear, activeTenantId, availableTenants, loadLeads, session, setSession, waitingForRequestedTenant, carregandoAcessos, erroAcessos, podeVer]);
 
   const handleLogout = () => {
     logout();
@@ -403,7 +411,7 @@ function KanbanContent() {
       setIsModalOpen(false);
       createLeadForm.reset();
       loadLeads();
-    } catch (err) { alert("Falha ao criar lead"); }
+    } catch (err) { alert(mensagemDeErro(err, "Falha ao criar lead")); }
   };
 
   const handleEditClick = (lead: any) => {
@@ -432,7 +440,7 @@ function KanbanContent() {
       setIsEditModalOpen(false);
       setEditingLeadId(null);
       loadLeads(true);
-    } catch (err) { alert("Falha ao atualizar lead"); }
+    } catch (err) { alert(mensagemDeErro(err, "Falha ao atualizar lead")); }
   };
 
   const handleDeleteLead = async () => {
@@ -444,7 +452,7 @@ function KanbanContent() {
       setEditingLeadId(null);
       setDeleteConfirmText("");
       loadLeads(true);
-    } catch (err) { alert("Falha ao excluir lead"); }
+    } catch (err) { alert(mensagemDeErro(err, "Falha ao excluir lead")); }
   };
 
   const handleSearchCustomers = async (query: string) => {
@@ -499,7 +507,7 @@ function KanbanContent() {
       setSaleDate(todayLocalISODate());
       loadLeads(true);
     } catch (err) {
-      alert("Falha ao registrar venda");
+      alert(mensagemDeErro(err, "Falha ao registrar venda"));
     } finally {
       submittingSaleRef.current = false;
       setIsSubmittingSale(false);
@@ -513,7 +521,7 @@ function KanbanContent() {
       loadLeads(true);
     } catch (err) { 
       console.error(err);
-      alert("Falha ao salvar movimento no servidor. Sincronizando...");
+      alert(mensagemDeErro(err, "Falha ao salvar movimento no servidor. Sincronizando..."));
       loadLeads(); 
     }
   };
@@ -544,6 +552,7 @@ function KanbanContent() {
   };
 
   const onDragEnd = async (result: any) => {
+    if (!podeEditar) return;
     const { source, destination, draggableId } = result;
     
     // Se não mudou de lugar, não faz nada
@@ -588,8 +597,8 @@ function KanbanContent() {
     <div className="h-screen flex flex-col bg-gray-50 text-gray-900 font-sans overflow-hidden">
       <Navbar 
         onRefresh={() => loadLeads()}
-        onNewLead={() => setIsModalOpen(true)}
-        onNewSale={() => setIsNewSaleModalOpen(true)}
+        onNewLead={pode("crm.lead.criar") ? () => setIsModalOpen(true) : undefined}
+        onNewSale={podeEditar ? () => setIsNewSaleModalOpen(true) : undefined}
       >
         <div className="hidden md:flex items-center gap-3">
 
@@ -664,6 +673,20 @@ function KanbanContent() {
       </div>
 
       <main className="flex-1 p-4 md:p-6 min-h-0 relative">
+        {!carregandoAcessos && !erroAcessos && !podeVer ? (
+          <div className="h-full flex flex-col items-center justify-center text-center gap-3 px-6">
+            <h1 className="text-lg font-bold text-gray-800">Você não tem acesso ao CRM nesta empresa</h1>
+            <a href={process.env.NEXT_PUBLIC_CUSTOMERS_URL || "https://customer.unumpeople.com.br"} className="text-sm font-bold text-brand-blue underline">
+              Abrir o Portal do Cliente
+            </a>
+          </div>
+        ) : (
+        <>
+        {erroAcessos && (
+          <p role="alert" className="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-medium text-amber-800">
+            Não foi possível carregar suas permissões nesta empresa.
+          </p>
+        )}
         {/* Overlay de Loading Moderno (Cobrindo todo o viewport) */}
         {loading && (
           <div className="fixed inset-0 z-[60] flex items-center justify-center bg-white/30 backdrop-blur-[1.5px] transition-all duration-300 text-gray-900">
@@ -699,7 +722,7 @@ function KanbanContent() {
                         const totalLtv = lead.sales?.reduce((sum: number, s: any) => sum + s.valor, 0) || 0;
                         
                         return (
-                          <Draggable key={lead.id} draggableId={lead.id} index={index}>
+                          <Draggable key={lead.id} draggableId={lead.id} index={index} isDragDisabled={!podeEditar}>
                             {(provided) => {
                               // Tenta encontrar a data de atualização mais recente
                               const lastUpdateDate = lead.updated_at || lead.updatedAt || lead.created_at || lead.createdAt;
@@ -721,20 +744,26 @@ function KanbanContent() {
                                   </div>
 
                                   <div className="p-4 pl-5">
+                                    {!carregandoAcessos && !erroAcessos && podeVer && (
                                     <div className="absolute top-2 right-2 flex gap-1">
                                       <button 
                                         onClick={() => handleEditClick(lead)} 
+                                        aria-label={podeEditar ? "Editar lead" : "Ver lead"}
                                         className="p-1.5 text-gray-400 hover:text-brand-blue md:opacity-0 md:group-hover:opacity-100 transition-all bg-gray-50 md:bg-transparent rounded-md active:bg-gray-100"
                                       >
                                         <Edit2 size={14} />
                                       </button>
+                                      {podeEditar && (
                                       <button 
                                         onClick={() => { setQuickMoveLead(lead); setIsQuickMoveModalOpen(true); }} 
+                                        aria-label="Mover lead"
                                         className="md:hidden p-1.5 text-brand-blue bg-primary-50 rounded-md active:bg-primary-100 transition-colors"
                                       >
                                         <ArrowRightLeft size={14} />
                                       </button>
+                                      )}
                                     </div>
+                                    )}
                                     <div className="font-bold text-gray-900 group-hover:text-brand-blue transition-colors truncate pr-16" title={lead.nome}>{lead.nome}</div>
                                     
                                     <div className="flex items-center justify-between mt-1 gap-2">
@@ -803,6 +832,8 @@ function KanbanContent() {
             ))}
           </div>
         </DragDropContext>
+        </>
+        )}
       </main>
 
       {/* Modal Novo Lead */}
@@ -1028,16 +1059,19 @@ function KanbanContent() {
               <div className="shrink-0 px-6 pt-6">
                 <div className="w-12 h-1.5 bg-gray-300 rounded-full mx-auto mb-4 md:hidden" />
                 <div className="flex justify-between items-center mb-6 border-b pb-4">
-                  <h2 className="text-lg font-bold flex items-center gap-2"><Edit2 size={18} className="text-brand-blue" /> Editar Lead</h2>
+                  <h2 className="text-lg font-bold flex items-center gap-2"><Edit2 size={18} className="text-brand-blue" /> {podeEditar ? "Editar Lead" : "Detalhes do lead"}</h2>
                   <div className="flex items-center gap-2">
+                    {pode("crm.lead.excluir") && (
                     <button 
                       type="button" 
                       onClick={() => setIsDeleteConfirmModalOpen(true)}
                       className="p-2 text-red-500 hover:bg-red-50 rounded-full transition-colors"
                       title="Excluir Lead"
+                      aria-label="Excluir lead"
                     >
                       <Trash2 size={20} />
                     </button>
+                    )}
                     <button onClick={() => setIsEditModalOpen(false)}><X size={20} /></button>
                   </div>
                 </div>
@@ -1045,6 +1079,7 @@ function KanbanContent() {
 
               <div className="overflow-y-auto flex-1 px-6 pb-6 custom-scrollbar">
                 <form onSubmit={editLeadForm.handleSubmit(handleUpdateLead)} className="space-y-4">
+                  <fieldset disabled={!podeEditar}>
                   <div className="grid grid-cols-1 gap-4">
                     <Input 
                       label="Nome"
@@ -1123,13 +1158,15 @@ function KanbanContent() {
                       {editLeadForm.formState.errors.anotacoes && <p className="text-red-500 text-xs mt-1">{editLeadForm.formState.errors.anotacoes.message}</p>}
                     </div>
                   </div>
-                  
+                  </fieldset>
+
                   <div className="mt-8 border-t pt-4">
                     <div className="flex justify-between items-center mb-4">
                       <h3 className="text-sm font-black text-gray-700 uppercase flex items-center gap-2"><DollarSign size={16} className="text-green-600" /> Vendas do mês</h3>
-                      {editingLeadStatus === "GANHO" && (
+                      {podeEditar && editingLeadStatus === "GANHO" && (
                         <button 
                           type="button"
+                          aria-label="Registrar venda"
                           onClick={() => {
                             // find lead in boardData to get current object for selection
                             const allLeads = Object.values(boardData).flat() as any[];
@@ -1156,7 +1193,9 @@ function KanbanContent() {
 
                   <div className="flex gap-3 mt-8">
                     <button type="button" onClick={() => setIsEditModalOpen(false)} className="flex-1 bg-gray-100 p-3 rounded-md font-bold">Cancelar</button>
+                    {podeEditar && (
                     <button type="submit" className="flex-1 bg-brand-orange text-white p-3 rounded-md font-bold hover:brightness-110">Salvar Alterações</button>
+                    )}
                   </div>
                 </form>
               </div>
