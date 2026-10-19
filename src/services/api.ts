@@ -27,7 +27,10 @@ api.interceptors.response.use(
       }
     }
     if (error.response?.status === 403) {
-      if (typeof window !== 'undefined' && !window.location.pathname.includes('/acesso-negado')) {
+      // 403 com permissão nomeada fica na tela; os demais seguem para /acesso-negado.
+      const permissao = error.response?.data?.permissao;
+      const recusaPorPermissao = typeof permissao === 'string' && permissao.length > 0;
+      if (!recusaPorPermissao && typeof window !== 'undefined' && !window.location.pathname.includes('/acesso-negado')) {
         window.location.href = '/acesso-negado';
       }
     }
@@ -205,5 +208,45 @@ export const TermsService = {
     return response.data;
   },
 };
+
+export interface PapelResumo {
+  id: string;
+  nome: string;
+  sistema: boolean;
+  implicito: boolean;
+}
+
+export interface AcessoFerramenta {
+  id: string;
+  nome: string;
+  contratada: boolean;
+  papel: PapelResumo | null;
+  permissoes: string[];
+}
+
+export interface MeusAcessos {
+  tenant_id: string;
+  operador: boolean;
+  ferramentas: AcessoFerramenta[];
+}
+
+export const AcessosService = {
+  get: async (tenantId: string): Promise<MeusAcessos> => {
+    const response = await api.get(`/me/acessos?tenant_id=${encodeURIComponent(tenantId)}`);
+    return response.data;
+  },
+};
+
+export const MENSAGEM_SEM_PERMISSAO = 'Você não tem permissão para fazer isso nesta empresa.';
+
+// 403 com data.permissao preenchida usa a mensagem fixa; o resto mantém o texto padrão.
+export function mensagemDeErro(err: unknown, padrao: string): string {
+  const response = (err as { response?: { status?: number; data?: { permissao?: unknown } } } | null)?.response;
+  const permissao = response?.data?.permissao;
+  if (response?.status === 403 && typeof permissao === 'string' && permissao.length > 0) {
+    return MENSAGEM_SEM_PERMISSAO;
+  }
+  return padrao;
+}
 
 export default api;

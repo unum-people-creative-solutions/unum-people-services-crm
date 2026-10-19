@@ -2,7 +2,8 @@ import { render, screen, waitFor, within, fireEvent, act } from '@testing-librar
 import userEvent from '@testing-library/user-event';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import KanbanPage from './page';
-import { LeadService, TenantService } from '@/services/api';
+import { AcessosService, LeadService, TenantService } from '@/services/api';
+import { AcessosProvider } from '@/contexts/AcessosContext';
 import type { MonthSale } from '@/services/api';
 import { useAuthStore } from '@/store/authStore';
 import { useTenant } from '@/contexts/TenantContext';
@@ -15,6 +16,8 @@ vi.mock('next/navigation', () => ({
 
 vi.mock('@/services/api', () => ({
   default: { interceptors: { request: { use: vi.fn() }, response: { use: vi.fn() } } },
+  mensagemDeErro: (_err: unknown, padrao: string) => padrao,
+  AcessosService: { get: vi.fn() },
   LeadService: {
     list: vi.fn(),
     create: vi.fn(),
@@ -94,6 +97,12 @@ describe('KanbanPage', () => {
       isLoadingTenants: false,
     });
     (TenantService.listMyTenants as any).mockResolvedValue(mockTenants);
+    // Gestor do CRM: todas as ações (gestao-de-acesso-f4 RF-05).
+    (AcessosService.get as any).mockResolvedValue({
+      tenant_id: 'tenant-1',
+      operador: false,
+      ferramentas: [{ id: 'crm', nome: 'CRM', contratada: true, papel: { id: 'gestor', nome: 'Gestor', sistema: true, implicito: false }, permissoes: ['crm.lead.ver', 'crm.lead.criar', 'crm.lead.editar', 'crm.lead.excluir', 'crm.integracoes.gerir'] }],
+    });
     (LeadService.list as any).mockImplementation((status: string) => {
       return Promise.resolve(mockLeads.filter(l => l.status === status));
     });
@@ -101,7 +110,7 @@ describe('KanbanPage', () => {
   });
 
   it('deve renderizar as colunas do Kanban e carregar os leads', async () => {
-    render(<KanbanPage />);
+    render(<AcessosProvider><KanbanPage /></AcessosProvider>);
     await waitFor(() => expect(screen.queryByText(/Sincronizando/i)).not.toBeInTheDocument());
     expect(screen.getByText('Novos Leads')).toBeInTheDocument();
     expect(screen.getByText('João Silva')).toBeInTheDocument();
@@ -109,7 +118,7 @@ describe('KanbanPage', () => {
 
   it('deve desmascarar o faturamento ao clicar no olho', async () => {
     const user = userEvent.setup();
-    render(<KanbanPage />);
+    render(<AcessosProvider><KanbanPage /></AcessosProvider>);
     await waitFor(() => screen.getByText('R$ ••••••'));
     
     const eyeButtons = screen.getAllByRole('button').filter(b => b.querySelector('svg.lucide-eye'));
@@ -122,7 +131,7 @@ describe('KanbanPage', () => {
 
   it('deve abrir o modal de novo lead e disparar criação', async () => {
     const user = userEvent.setup();
-    render(<KanbanPage />);
+    render(<AcessosProvider><KanbanPage /></AcessosProvider>);
     await waitFor(() => screen.queryByText(/Sincronizando/i) === null);
 
     await user.click(screen.getByRole('button', { name: /Menu Principal/i }));
@@ -146,7 +155,7 @@ describe('KanbanPage', () => {
 
   it('deve disparar exportação de Excel', async () => {
     const user = userEvent.setup();
-    render(<KanbanPage />);
+    render(<AcessosProvider><KanbanPage /></AcessosProvider>);
     await waitFor(() => screen.queryByText(/Sincronizando/i) === null);
 
     const exportBtn = screen.getByTitle(/Exportar Relatório/i);
@@ -179,7 +188,7 @@ describe('KanbanPage', () => {
 
     it('T08 — pede Ganho com limites de dia de calendário UTC e Perdido com limites locais', async () => {
       fixTime(new Date(2026, 8, 15, 12, 0));
-      render(<KanbanPage />);
+      render(<AcessosProvider><KanbanPage /></AcessosProvider>);
 
       await waitFor(() => {
         expect(LeadService.list).toHaveBeenCalledWith(
@@ -200,7 +209,7 @@ describe('KanbanPage', () => {
     it('T09 — o campo Data da Venda vem com a data local às 22:30 de 30/09', async () => {
       fixTime(new Date(2026, 8, 30, 22, 30));
       const user = userEvent.setup();
-      render(<KanbanPage />);
+      render(<AcessosProvider><KanbanPage /></AcessosProvider>);
       await waitFor(() => expect(screen.queryByText(/Sincronizando/i)).not.toBeInTheDocument());
 
       await openNewSaleForm(user);
@@ -223,7 +232,7 @@ describe('KanbanPage', () => {
         }),
       ]);
       const user = userEvent.setup();
-      render(<KanbanPage />);
+      render(<AcessosProvider><KanbanPage /></AcessosProvider>);
       await waitFor(() => expect(screen.queryByText(/Sincronizando/i)).not.toBeInTheDocument());
 
       await user.click(screen.getByTitle(/Exportar Relatório/i));
@@ -251,7 +260,7 @@ describe('KanbanPage', () => {
       ]);
       (LeadService.addSale as any).mockImplementation(pending);
       const user = userEvent.setup();
-      render(<KanbanPage />);
+      render(<AcessosProvider><KanbanPage /></AcessosProvider>);
       await waitFor(() => expect(screen.queryByText(/Sincronizando/i)).not.toBeInTheDocument());
 
       await user.click(screen.getByRole('button', { name: /Menu Principal/i }));
@@ -273,7 +282,7 @@ describe('KanbanPage', () => {
       ]);
       (LeadService.addSale as any).mockRejectedValue(new Error('boom'));
       const user = userEvent.setup();
-      render(<KanbanPage />);
+      render(<AcessosProvider><KanbanPage /></AcessosProvider>);
       await waitFor(() => expect(screen.queryByText(/Sincronizando/i)).not.toBeInTheDocument());
 
       await user.click(screen.getByRole('button', { name: /Menu Principal/i }));
@@ -292,7 +301,7 @@ describe('KanbanPage', () => {
     it('Mover para Ganho: o clique duplo chama updateStatus uma única vez e desabilita o botão', async () => {
       (LeadService.updateStatus as any).mockImplementation(pending);
       const user = userEvent.setup();
-      const { container } = render(<KanbanPage />);
+      const { container } = render(<AcessosProvider><KanbanPage /></AcessosProvider>);
       await waitFor(() => expect(screen.queryByText(/Sincronizando/i)).not.toBeInTheDocument());
 
       const quickMove = container.querySelector('svg.lucide-arrow-right-left')?.closest('button');
@@ -334,7 +343,7 @@ describe('KanbanPage', () => {
       (LeadService.searchCustomers as any).mockResolvedValue([searchResult]);
       (LeadService.addSale as any).mockResolvedValue({});
       const user = userEvent.setup();
-      render(<KanbanPage />);
+      render(<AcessosProvider><KanbanPage /></AcessosProvider>);
       await waitFor(() => expect(screen.queryByText(/Sincronizando/i)).not.toBeInTheDocument());
 
       await registerNewSale(user);
@@ -354,7 +363,7 @@ describe('KanbanPage', () => {
     it('Mover para Ganho: depois de uma venda com sucesso, o botão volta habilitado e uma segunda venda é enviada', async () => {
       (LeadService.updateStatus as any).mockResolvedValue({});
       const user = userEvent.setup();
-      const { container } = render(<KanbanPage />);
+      const { container } = render(<AcessosProvider><KanbanPage /></AcessosProvider>);
       await waitFor(() => expect(screen.queryByText(/Sincronizando/i)).not.toBeInTheDocument());
 
       await openMoveToGanho(user, container);
@@ -375,7 +384,7 @@ describe('KanbanPage', () => {
       (LeadService.searchCustomers as any).mockResolvedValue([searchResult]);
       (LeadService.addSale as any).mockImplementation(() => new Promise(() => {}));
       const user = userEvent.setup();
-      render(<KanbanPage />);
+      render(<AcessosProvider><KanbanPage /></AcessosProvider>);
       await waitFor(() => expect(screen.queryByText(/Sincronizando/i)).not.toBeInTheDocument());
       await registerNewSale(user);
 
@@ -391,7 +400,7 @@ describe('KanbanPage', () => {
     it('Mover para Ganho: dois submits no mesmo tick (sem re-render) chamam updateStatus uma única vez', async () => {
       (LeadService.updateStatus as any).mockImplementation(() => new Promise(() => {}));
       const user = userEvent.setup();
-      const { container } = render(<KanbanPage />);
+      const { container } = render(<AcessosProvider><KanbanPage /></AcessosProvider>);
       await waitFor(() => expect(screen.queryByText(/Sincronizando/i)).not.toBeInTheDocument());
       await openMoveToGanho(user, container);
 
@@ -427,7 +436,7 @@ describe('KanbanPage', () => {
 
     it('pede as vendas do mês selecionado com o tenant ativo e as recarrega ao trocar o mês', async () => {
       const user = userEvent.setup();
-      render(<KanbanPage />);
+      render(<AcessosProvider><KanbanPage /></AcessosProvider>);
       const now = new Date();
       const monthKey = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
       await waitFor(() =>
@@ -448,7 +457,7 @@ describe('KanbanPage', () => {
         Promise.resolve(status === 'NOVO' ? [mockLeads[0]] : [])
       );
       const user = userEvent.setup();
-      render(<KanbanPage />);
+      render(<AcessosProvider><KanbanPage /></AcessosProvider>);
       await waitFor(() => expect(screen.queryByText(/Sincronizando/i)).not.toBeInTheDocument());
 
       await revealRevenue(user);
@@ -460,7 +469,7 @@ describe('KanbanPage', () => {
       (LeadService.listSalesByMonth as any).mockResolvedValue(vendasDoMes);
       (LeadService.list as any).mockImplementation(() => Promise.resolve([]));
       const user = userEvent.setup();
-      render(<KanbanPage />);
+      render(<AcessosProvider><KanbanPage /></AcessosProvider>);
       await waitFor(() => expect(LeadService.listSalesByMonth).toHaveBeenCalled());
       await waitFor(() => expect(screen.queryByText(/Sincronizando/i)).not.toBeInTheDocument());
 
@@ -482,7 +491,7 @@ describe('KanbanPage', () => {
       const alertSpy = vi.spyOn(window, 'alert').mockImplementation(() => {});
       (LeadService.listSalesByMonth as any).mockResolvedValue([]);
       const user = userEvent.setup();
-      render(<KanbanPage />);
+      render(<AcessosProvider><KanbanPage /></AcessosProvider>);
       await waitFor(() => expect(screen.queryByText(/Sincronizando/i)).not.toBeInTheDocument());
 
       await user.click(screen.getByTitle(/Exportar Relatório/i));
@@ -498,7 +507,7 @@ describe('KanbanPage', () => {
       const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
       (LeadService.listSalesByMonth as any).mockRejectedValue(new Error('boom'));
       const user = userEvent.setup();
-      render(<KanbanPage />);
+      render(<AcessosProvider><KanbanPage /></AcessosProvider>);
       await waitFor(() => expect(screen.queryByText(/Sincronizando/i)).not.toBeInTheDocument());
 
       // Cabeçalho desktop e cabeçalho mobile mostram o aviso (2 lugares).
@@ -539,7 +548,7 @@ describe('KanbanPage', () => {
       );
       (LeadService.update as any).mockResolvedValue({});
 
-      const { container } = render(<KanbanPage />);
+      const { container } = render(<AcessosProvider><KanbanPage /></AcessosProvider>);
       await screen.findByText('Carlos Lima');
 
       const editButton = container.querySelector('svg.lucide-pen')?.closest('button');
@@ -574,7 +583,7 @@ describe('KanbanPage', () => {
         isLoadingTenants: false,
       });
 
-      const { rerender } = render(<KanbanPage />);
+      const { rerender } = render(<AcessosProvider><KanbanPage /></AcessosProvider>);
 
       // Aguarda carregar inicialmente os leads do tenant-1
       await waitFor(() => {
@@ -611,7 +620,7 @@ describe('KanbanPage', () => {
       });
 
       // Re-renderiza o componente com o novo valor de contexto
-      rerender(<KanbanPage />);
+      rerender(<AcessosProvider><KanbanPage /></AcessosProvider>);
 
       // Deve disparar a busca de leads com o novo tenant-2
       await waitFor(() => {
@@ -669,24 +678,24 @@ describe('KanbanPage — tenant_id na URL', () => {
 
   it('troca para o tenant da URL depois que a lista de tenants carrega, uma vez só', async () => {
     (useTenant as any).mockReturnValue(contexto({ isLoadingTenants: true }));
-    const { rerender } = render(<KanbanPage />);
+    const { rerender } = render(<AcessosProvider><KanbanPage /></AcessosProvider>);
     expect(switchTenant).not.toHaveBeenCalled();
 
     (useTenant as any).mockReturnValue(contexto({}));
-    rerender(<KanbanPage />);
+    rerender(<AcessosProvider><KanbanPage /></AcessosProvider>);
     await waitFor(() => expect(switchTenant).toHaveBeenCalledWith('tenant-B'));
 
-    rerender(<KanbanPage />);
+    rerender(<AcessosProvider><KanbanPage /></AcessosProvider>);
     expect(switchTenant).toHaveBeenCalledTimes(1);
   });
 
   it('não desfaz uma troca posterior pelo seletor', async () => {
     (useTenant as any).mockReturnValue(contexto({}));
-    const { rerender } = render(<KanbanPage />);
+    const { rerender } = render(<AcessosProvider><KanbanPage /></AcessosProvider>);
     await waitFor(() => expect(switchTenant).toHaveBeenCalledTimes(1));
 
     (useTenant as any).mockReturnValue(contexto({ activeTenantId: 'tenant-C', activeTenantName: 'Gama' }));
-    rerender(<KanbanPage />);
+    rerender(<AcessosProvider><KanbanPage /></AcessosProvider>);
     await act(async () => {});
 
     expect(switchTenant).toHaveBeenCalledTimes(1);
@@ -694,11 +703,11 @@ describe('KanbanPage — tenant_id na URL', () => {
 
   it('não troca quando o tenant da URL já é o ativo, nem depois de uma troca pelo seletor', async () => {
     (useTenant as any).mockReturnValue(contexto({ activeTenantId: 'tenant-B', activeTenantName: 'Beta' }));
-    const { rerender } = render(<KanbanPage />);
+    const { rerender } = render(<AcessosProvider><KanbanPage /></AcessosProvider>);
     await act(async () => {});
 
     (useTenant as any).mockReturnValue(contexto({ activeTenantId: 'tenant-C', activeTenantName: 'Gama' }));
-    rerender(<KanbanPage />);
+    rerender(<AcessosProvider><KanbanPage /></AcessosProvider>);
     await act(async () => {});
 
     expect(switchTenant).not.toHaveBeenCalled();
@@ -713,11 +722,11 @@ describe('KanbanPage — tenant_id na URL', () => {
       (useTenant as any).mockReturnValue(contexto({ activeTenantId: id, activeTenantName: 'Beta' }));
     });
     (useTenant as any).mockReturnValue(contexto({ isLoadingTenants: true }));
-    const { rerender } = render(<KanbanPage />);
+    const { rerender } = render(<AcessosProvider><KanbanPage /></AcessosProvider>);
     await act(async () => {});
 
     (useTenant as any).mockReturnValue(contexto({}));
-    rerender(<KanbanPage />);
+    rerender(<AcessosProvider><KanbanPage /></AcessosProvider>);
 
     await waitFor(() => expect(tenantsDasBuscas()).toContain('tenant-B'));
     expect(tenantsDasBuscas()).not.toContain('tenant-A');
@@ -730,7 +739,7 @@ describe('KanbanPage — tenant_id na URL', () => {
         { id: 'tenant-B', nome_negocio: 'Beta', is_blocked: true },
       ],
     }));
-    render(<KanbanPage />);
+    render(<AcessosProvider><KanbanPage /></AcessosProvider>);
 
     await waitFor(() => expect(tenantsDasBuscas()).toContain('tenant-A'));
   });
