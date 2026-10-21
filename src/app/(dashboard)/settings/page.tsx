@@ -11,7 +11,7 @@ import { useAcessosDoCRM } from "@/contexts/AcessosContext";
 export default function SettingsPage() {
   const { session } = useAuthStore();
   const [activeTab, setActiveTab] = useState("my-account");
-  const { podeNoPortal } = useAcessosDoCRM();
+  const { podeNoPortal, erro: erroAcessos } = useAcessosDoCRM();
   // gestao-de-acesso-f5 RF-07: a aba Equipe (link para o Portal) aparece para quem gere usuários no Portal, nunca por grupo ou role antigo.
   const podeVerEquipe = session?.role === "GlobalAdmin" || podeNoPortal("portal.usuarios.gerir");
 
@@ -27,6 +27,11 @@ export default function SettingsPage() {
           <p className="text-gray-500 text-sm font-medium">Gerencie suas informações, equipe e sistema.</p>
         </header>
 
+        {erroAcessos && session?.role !== "GlobalAdmin" && (
+          <p role="alert" className="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-medium text-amber-800">
+            Não foi possível carregar suas permissões nesta empresa. A aba Equipe pode não aparecer. Recarregue a página para tentar de novo.
+          </p>
+        )}
         {/* Tab Navigation */}
         <div 
           role="tablist" 
