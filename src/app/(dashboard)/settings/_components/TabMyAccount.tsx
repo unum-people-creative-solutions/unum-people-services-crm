@@ -3,21 +3,15 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useAuthStore } from "@/store/authStore";
-import { User, Mail, Shield, Building, Trash2, Save, ExternalLink, Bell, AlertTriangle } from "lucide-react";
-import { motion, AnimatePresence } from "framer-motion";
+import { User, Mail, Shield, Building, Save, ExternalLink, Bell, AlertTriangle } from "lucide-react";
 import { usePushNotifications } from "@/hooks/usePushNotifications";
-import { TenantService } from "@/services/api";
 import { useTenant } from "@/contexts/TenantContext";
-import { logoutFromHostedUI } from "@/lib/pkce";
 
 export default function TabMyAccount() {
   const { session } = useAuthStore();
   const { isSubscribed, subscribeUser, unsubscribeUser, loading: pushLoading, permission } = usePushNotifications();
   const { activeTenantName } = useTenant();
-  const [showDeleteModal, setShowDeleteModal] = useState(false);
-  const [deleteConfirmationText, setDeleteConfirmationText] = useState("");
   const [isExporting, setIsExporting] = useState(false);
-  const [isDeleting, setIsDeleting] = useState(false);
 
   // Consider mobile if window is narrow, but for modal let's just use CSS media queries
   // or a simple heuristic if needed. For simplicity, omit complex JS mobile detection 
@@ -172,91 +166,7 @@ export default function TabMyAccount() {
             </button>
           </div>
         </section>
-
-        {/* Perigo */}
-        <section className="mt-4 pt-6 border-t border-gray-200">
-          <div className="bg-red-50 p-6 rounded-xl border border-red-100 flex flex-col md:flex-row items-center justify-between gap-4">
-            <div>
-              <h3 className="text-red-800 font-black uppercase tracking-tight text-lg">Zona de Perigo</h3>
-              <p className="text-red-600 text-xs font-medium">Ao excluir sua conta, você perderá acesso imediato ao sistema.</p>
-            </div>
-            <button 
-              onClick={() => setShowDeleteModal(true)}
-              className="w-full md:w-auto px-6 py-3 bg-red-600 text-white rounded-lg font-bold hover:bg-red-700 transition-all flex items-center justify-center gap-2"
-            >
-              <Trash2 size={18} /> Solicitar Exclusão
-            </button>
-          </div>
-        </section>
       </div>
-
-      <AnimatePresence>
-        {showDeleteModal && (
-          <motion.div 
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            onClick={() => { setShowDeleteModal(false); setDeleteConfirmationText(""); }}
-            className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm"
-          >
-            <motion.div 
-              initial={{ scale: 0.9, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              exit={{ scale: 0.9, opacity: 0 }}
-              onClick={(e) => e.stopPropagation()}
-              className="bg-white rounded-xl max-w-md w-full shadow-2xl flex flex-col overflow-hidden p-6"
-            >
-              <h3 className="text-xl font-black text-red-600 mb-2">Confirmar Exclusão?</h3>
-              
-              <div className="bg-red-50 p-4 rounded-xl border border-red-100 mb-4">
-                <p className="text-xs text-red-800 font-bold uppercase mb-1">Atenção Crítica</p>
-                <ul className="text-[11px] text-red-700 leading-relaxed list-disc list-inside space-y-1 font-medium">
-                  <li>Você perderá acesso imediato ao sistema.</li>
-                  <li>Esta ação não pode ser desfeita.</li>
-                </ul>
-              </div>
-              
-              <input 
-                type="text" 
-                value={deleteConfirmationText} 
-                onChange={(e) => setDeleteConfirmationText(e.target.value)}
-                placeholder="Digite excluir"
-                className="w-full border-2 border-red-100 p-3 rounded-xl outline-none focus:border-red-500 text-center font-bold mb-4 text-gray-900"
-              />
-
-              <div className="flex flex-col gap-2">
-                <button 
-                  className="w-full bg-red-600 text-white p-4 rounded-xl font-bold disabled:opacity-30"
-                  disabled={deleteConfirmationText.toLowerCase() !== "excluir" || isDeleting}
-                  onClick={async () => {
-                    setIsDeleting(true);
-                    try {
-                      const res = await TenantService.deleteAccount();
-                      alert(res.message || "Sua conta foi desativada e a solicitação de exclusão foi registrada.");
-                      useAuthStore.getState().logout();
-                      logoutFromHostedUI();
-                    } catch (error) {
-                      console.error("[TabMyAccount] deleteAccount falhou:", error);
-                      alert("Não foi possível desativar sua conta. Tente novamente ou entre em contato com o suporte.");
-                    } finally {
-                      setIsDeleting(false);
-                    }
-                  }}
-                >
-                  {isDeleting ? "Processando..." : "Sim, excluir permanentemente"}
-                </button>
-                <button 
-                  onClick={() => { setShowDeleteModal(false); setDeleteConfirmationText(""); }}
-                  disabled={isDeleting}
-                  className="w-full bg-gray-50 text-gray-500 p-4 rounded-xl font-bold"
-                >
-                  Cancelar
-                </button>
-              </div>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
     </>
   );
 }
