@@ -4,7 +4,6 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import SettingsPage from './page';
 import { useAuthStore } from '@/store/authStore';
 import * as pushHooks from '@/hooks/usePushNotifications';
-import { TenantService } from '@/services/api';
 import { useTenant } from '@/contexts/TenantContext';
 
 // Mocks
@@ -46,12 +45,6 @@ const podeNoPortal = vi.hoisted(() => vi.fn());
 const leitura = vi.hoisted(() => ({ erro: false }));
 vi.mock('@/contexts/AcessosContext', () => ({
   useAcessosDoCRM: () => ({ carregando: false, erro: leitura.erro, pode: () => false, podeNoPortal }),
-}));
-
-vi.mock('@/services/api', () => ({
-  TenantService: {
-    deleteAccount: vi.fn().mockResolvedValue({}),
-  }
 }));
 
 // Mock do Blob e URL
@@ -135,39 +128,12 @@ describe('SettingsPage', () => {
     expect(global.URL.createObjectURL).toHaveBeenCalled();
   });
 
-  it('deve abrir o modal de exclusão, exigir a palavra "excluir" e confirmar', async () => {
-    const user = userEvent.setup();
-    const alertMock = vi.spyOn(window, 'alert').mockImplementation(() => {});
+  it('não oferece exclusão de conta em Minha Conta', () => {
     render(<SettingsPage />);
 
-    const openModalBtn = screen.getByRole('button', { name: /Solicitar Exclusão/i });
-    await user.click(openModalBtn);
-
-    // Verifica se o modal abriu e mostra os avisos
-    expect(screen.getByText('Confirmar Exclusão?')).toBeInTheDocument();
-    expect(screen.getByText('Atenção Crítica')).toBeInTheDocument();
-    expect(screen.getAllByText(/Você perderá acesso imediato ao sistema/i).length).toBeGreaterThanOrEqual(1);
-
-    const confirmBtn = screen.getByRole('button', { name: /Sim, excluir permanentemente/i });
-    const input = screen.getByPlaceholderText('Digite excluir');
-
-    // Botão deve estar desabilitado inicialmente
-    expect(confirmBtn).toBeDisabled();
-
-    // Digitar algo incorreto
-    await user.type(input, 'cancelar');
-    expect(confirmBtn).toBeDisabled();
-
-    // Digitar "excluir"
-    await user.clear(input);
-    await user.type(input, 'excluir');
-    expect(confirmBtn).not.toBeDisabled();
-
-    // Confirmar
-    await user.click(confirmBtn);
-    expect(alertMock).toHaveBeenCalledWith('Sua conta foi desativada e a solicitação de exclusão foi registrada.');
-
-    alertMock.mockRestore();
+    expect(screen.queryByRole('button', { name: /Solicitar Exclusão/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /excluir permanentemente/i })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Exportar Meus Dados/i })).toBeInTheDocument();
   });
 
   describe('SettingsPage - Tabs & Team Management (QA RED)', () => {
