@@ -157,10 +157,6 @@ export const TenantService = {
     const response = await api.post(url);
     return response.data;
   },
-  deleteAccount: async () => {
-    const response = await api.delete('/me/account');
-    return response.data;
-  },
 };
 
 export interface TermStatusItem {
