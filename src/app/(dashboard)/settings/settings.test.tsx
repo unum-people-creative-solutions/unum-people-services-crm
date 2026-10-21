@@ -43,8 +43,9 @@ vi.mock('@/contexts/TenantContext', () => ({
 }));
 
 const podeNoPortal = vi.hoisted(() => vi.fn());
+const leitura = vi.hoisted(() => ({ erro: false }));
 vi.mock('@/contexts/AcessosContext', () => ({
-  useAcessosDoCRM: () => ({ carregando: false, erro: false, pode: () => false, podeNoPortal }),
+  useAcessosDoCRM: () => ({ carregando: false, erro: leitura.erro, pode: () => false, podeNoPortal }),
 }));
 
 vi.mock('@/services/api', () => ({
@@ -78,6 +79,7 @@ describe('SettingsPage', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     podeNoPortal.mockImplementation((p: string) => p === 'portal.usuarios.gerir');
+    leitura.erro = false;
     (useAuthStore as any).mockReturnValue({ session: mockSession });
     // Reset para o mock padrão do hook
     (pushHooks.usePushNotifications as any).mockReturnValue({
@@ -208,6 +210,22 @@ describe('SettingsPage', () => {
       render(<SettingsPage />);
 
       expect(screen.getByRole('tab', { name: /equipe/i })).toBeInTheDocument();
+    });
+
+    // A aba Equipe some quando /me/acessos falha (negar, nunca liberar); a pessoa precisa saber por quê.
+    it('T02 - avisa quando as permissões não carregaram, em vez de só esconder a aba', () => {
+      leitura.erro = true;
+      podeNoPortal.mockReturnValue(false);
+      (useAuthStore as any).mockReturnValue({ session: { ...mockSession, role: 'USER' } });
+      render(<SettingsPage />);
+
+      expect(screen.queryByRole('tab', { name: /equipe/i })).not.toBeInTheDocument();
+      expect(screen.getByRole('alert')).toHaveTextContent('Não foi possível carregar suas permissões nesta empresa. A aba Equipe pode não aparecer. Recarregue a página para tentar de novo.');
+    });
+
+    it('T02 - sem falha na leitura, não há aviso', () => {
+      render(<SettingsPage />);
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument();
     });
 
     // gestao-de-acesso-f3-portal-cliente RF-21: a gestão da equipe (convite, papel,
