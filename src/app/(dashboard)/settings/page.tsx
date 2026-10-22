@@ -2,18 +2,21 @@
 
 import { useState } from "react";
 import { useAuthStore } from "@/store/authStore";
-import { Shield, User, Users } from "lucide-react";
+import { Megaphone, Shield, User, Users } from "lucide-react";
 import Navbar from "@/components/Navbar";
 import TabMyAccount from "./_components/TabMyAccount";
 import TabTeam from "./_components/TabTeam";
+import TabGoogleAds from "./_components/TabGoogleAds";
 import { useAcessosDoCRM } from "@/contexts/AcessosContext";
 
 export default function SettingsPage() {
   const { session } = useAuthStore();
   const [activeTab, setActiveTab] = useState("my-account");
-  const { podeNoPortal, erro: erroAcessos } = useAcessosDoCRM();
+  const { pode, podeNoPortal, erro: erroAcessos } = useAcessosDoCRM();
   // gestao-de-acesso-f5 RF-07: a aba Equipe (link para o Portal) aparece para quem gere usuários no Portal, nunca por grupo ou role antigo.
   const podeVerEquipe = session?.role === "GlobalAdmin" || podeNoPortal("portal.usuarios.gerir");
+  // funil-configurador-f1 US 17: a mesma regra do link "Conectar Google Ads" do menu.
+  const podeVerGoogleAds = session?.role === "GlobalAdmin" || pode("crm.integracoes.gerir");
 
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col text-gray-900">
@@ -65,12 +68,28 @@ export default function SettingsPage() {
               <Users size={18} /> Equipe
             </button>
           )}
+
+          {podeVerGoogleAds && (
+            <button
+              role="tab"
+              aria-selected={activeTab === "google-ads"}
+              onClick={() => setActiveTab("google-ads")}
+              className={`flex items-center gap-2 px-4 py-3 font-bold text-sm border-b-2 transition-colors whitespace-nowrap ${
+                activeTab === "google-ads"
+                  ? "border-brand-blue text-brand-blue"
+                  : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
+              }`}
+            >
+              <Megaphone size={18} /> Google Ads
+            </button>
+          )}
         </div>
 
         {/* Tab Content */}
         <div role="tabpanel">
           {activeTab === "my-account" && <TabMyAccount />}
           {activeTab === "team" && podeVerEquipe && <TabTeam />}
+          {activeTab === "google-ads" && podeVerGoogleAds && <TabGoogleAds />}
         </div>
       </main>
     </div>

@@ -226,3 +226,32 @@ export function mensagemDeErro(err: unknown, padrao: string): string {
 }
 
 export default api;
+
+export interface AdsConfig {
+  conectado: boolean;
+  google_ads_customer_id: string;
+  ads_conversion_action_id: string;
+  ads_recurring_conversion_action_id: string;
+}
+
+export type AdsConfigInput = Omit<AdsConfig, 'conectado'>;
+
+export const AdsConfigService = {
+  get: async (tenantId: string): Promise<AdsConfig> => {
+    const response = await api.get(`/integracoes/google-ads?tenant_id=${encodeURIComponent(tenantId)}`);
+    return response.data;
+  },
+  update: async (tenantId: string, data: AdsConfigInput): Promise<AdsConfig> => {
+    const {
+      google_ads_customer_id,
+      ads_conversion_action_id,
+      ads_recurring_conversion_action_id,
+    } = data;
+    const response = await api.put(`/integracoes/google-ads?tenant_id=${encodeURIComponent(tenantId)}`, {
+      google_ads_customer_id,
+      ads_conversion_action_id,
+      ads_recurring_conversion_action_id,
+    });
+    return response.data;
+  },
+};
