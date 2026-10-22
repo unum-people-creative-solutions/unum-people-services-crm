@@ -303,7 +303,7 @@ export default function Navbar({
                             <div className="grid gap-2">
                               {mostrarConexaoAds && (
                                 <a href={adsUrl} className="flex items-center gap-4 px-6 py-4 text-base font-bold text-primary-600 bg-primary-50/50 rounded-xl transition-colors">
-                                  <ExternalLink size={22} /> {session?.role === "GlobalAdmin" ? "Conectar MCC Agência" : "Conectar Google Ads"}
+                                  <ExternalLink size={22} /> {session?.role === "GlobalAdmin" ? "Conectar Google Ads (MCC)" : "Conectar Google Ads"}
                                 </a>
                               )}
                               <a href="http://docs.unumpeople.com.br/crm/" target="_blank" rel="noopener noreferrer" className="flex items-center gap-4 px-6 py-4 text-base font-bold text-gray-600 hover:bg-gray-50 rounded-xl transition-colors">
@@ -395,7 +395,7 @@ export default function Navbar({
                         </div>
                         {mostrarConexaoAds && (
                           <a href={adsUrl} className="flex items-center gap-3 px-4 py-2.5 text-sm font-bold text-primary-600 hover:bg-primary-50 rounded-lg transition-colors">
-                            <ExternalLink size={18} /> {session?.role === "GlobalAdmin" ? "Conectar MCC Agência" : "Conectar Google Ads"}
+                            <ExternalLink size={18} /> {session?.role === "GlobalAdmin" ? "Conectar Google Ads (MCC)" : "Conectar Google Ads"}
                           </a>
                         )}
                         <a href="http://docs.unumpeople.com.br/crm/" target="_blank" rel="noopener noreferrer" className="flex items-center gap-3 px-4 py-2.5 text-sm font-bold text-gray-600 hover:bg-gray-50 rounded-lg transition-colors">
