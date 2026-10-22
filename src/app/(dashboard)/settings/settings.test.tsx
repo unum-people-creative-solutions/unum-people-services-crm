@@ -42,9 +42,10 @@ vi.mock('@/contexts/TenantContext', () => ({
 }));
 
 const podeNoPortal = vi.hoisted(() => vi.fn());
+const podeNoCRM = vi.hoisted(() => vi.fn());
 const leitura = vi.hoisted(() => ({ erro: false }));
 vi.mock('@/contexts/AcessosContext', () => ({
-  useAcessosDoCRM: () => ({ carregando: false, erro: leitura.erro, pode: () => false, podeNoPortal }),
+  useAcessosDoCRM: () => ({ carregando: false, erro: leitura.erro, pode: podeNoCRM, podeNoPortal }),
 }));
 
 // Mock do Blob e URL
@@ -72,6 +73,7 @@ describe('SettingsPage', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     podeNoPortal.mockImplementation((p: string) => p === 'portal.usuarios.gerir');
+    podeNoCRM.mockReturnValue(false);
     leitura.erro = false;
     (useAuthStore as any).mockReturnValue({ session: mockSession });
     // Reset para o mock padrão do hook
@@ -208,5 +210,42 @@ describe('SettingsPage', () => {
       );
       expect(screen.queryByRole('button', { name: /convidar membro/i })).not.toBeInTheDocument();
     });
+  });
+});
+
+// Funil do Configurador, fase 1 (spec funil-configurador-f1 US 17): a aba Google Ads
+// segue a regra do link "Conectar Google Ads" do menu.
+vi.mock('./_components/TabGoogleAds', () => ({ default: () => <p>conteúdo da aba Google Ads</p> }));
+
+describe('SettingsPage - aba Google Ads', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    podeNoPortal.mockReturnValue(false);
+    (useTenant as any).mockReturnValue({ activeTenantId: 't-123', activeTenantName: 'Unum Corp' });
+    (pushHooks.usePushNotifications as any).mockReturnValue({
+      isSubscribed: false, subscribeUser: vi.fn(), unsubscribeUser: vi.fn(), loading: false, permission: 'default',
+    });
+  });
+
+  it('aparece com crm.integracoes.gerir e abre o conteúdo da aba', async () => {
+    (useAuthStore as any).mockReturnValue({ session: { name: 'A', email: 'a@x.com', role: 'Admin', tenantId: 't-123' } });
+    podeNoCRM.mockImplementation((p: string) => p === 'crm.integracoes.gerir');
+    render(<SettingsPage />);
+    await userEvent.setup().click(screen.getByRole('tab', { name: /google ads/i }));
+    expect(screen.getByText('conteúdo da aba Google Ads')).toBeInTheDocument();
+  });
+
+  it('aparece para GlobalAdmin', () => {
+    (useAuthStore as any).mockReturnValue({ session: { name: 'A', email: 'a@x.com', role: 'GlobalAdmin', tenantId: 't-123' } });
+    podeNoCRM.mockReturnValue(false);
+    render(<SettingsPage />);
+    expect(screen.getByRole('tab', { name: /google ads/i })).toBeInTheDocument();
+  });
+
+  it('não aparece sem a permissão', () => {
+    (useAuthStore as any).mockReturnValue({ session: { name: 'A', email: 'a@x.com', role: 'Admin', tenantId: 't-123' } });
+    podeNoCRM.mockReturnValue(false);
+    render(<SettingsPage />);
+    expect(screen.queryByRole('tab', { name: /google ads/i })).not.toBeInTheDocument();
   });
 });
