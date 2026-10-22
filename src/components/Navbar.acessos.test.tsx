@@ -60,11 +60,12 @@ describe('Navbar: Conectar o Google Ads', () => {
     expect(screen.queryByRole('link', { name: /Conectar Google Ads/i })).not.toBeInTheDocument();
   });
 
-  it('o operador continua vendo Conectar MCC Agência', async () => {
+  it('o operador vê Conectar Google Ads (MCC), sem "agência"', async () => {
     sessao('GlobalAdmin');
     const user = userEvent.setup();
     render(<Navbar />);
     await user.click(screen.getByRole('button', { name: /Menu Principal/i }));
-    expect(screen.getAllByRole('link', { name: /Conectar MCC Agência/i }).length).toBeGreaterThan(0);
+    expect(screen.getAllByRole('link', { name: 'Conectar Google Ads (MCC)' }).length).toBeGreaterThan(0);
+    expect(screen.queryByText(/Agência/i)).not.toBeInTheDocument();
   });
 });
