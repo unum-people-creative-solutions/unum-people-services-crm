@@ -31,7 +31,7 @@ function AdsCallbackContent() {
         setStatus("success");
         setMessage("Google Ads conectado com sucesso!");
         setTimeout(() => {
-          router.push(state === "MASTER" ? "/tenants" : "/kanban");
+          router.push("/kanban");
         }, 3000);
       } catch (err: any) {
         console.error("Erro no callback do Google Ads:", err);
