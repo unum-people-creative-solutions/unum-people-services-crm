@@ -6,6 +6,7 @@ import { useAuthStore } from '@/store/authStore';
 import { useTenant } from '@/contexts/TenantContext';
 import { AcessosProvider } from '@/contexts/AcessosContext';
 import { AcessosService, type MeusAcessos } from '@/services/api';
+import { getGoogleAdsAuthUrl } from '@/lib/google-ads';
 
 // spec: gestao-de-acesso-f4-aplicacao RF-05 (Conectar o Google Ads exige crm.integracoes.gerir).
 
@@ -60,12 +61,35 @@ describe('Navbar: Conectar o Google Ads', () => {
     expect(screen.queryByRole('link', { name: /Conectar Google Ads/i })).not.toBeInTheDocument();
   });
 
-  it('o operador vê Conectar Google Ads (MCC), sem "agência"', async () => {
+  // Verifier I2: sem empresa ativa o link levaria ao Google e falharia na volta.
+  it('o operador sem empresa ativa não vê o link', async () => {
+    sessao('GlobalAdmin');
+    (useTenant as any).mockReturnValue({
+      activeTenantId: null,
+      activeTenantName: '',
+      availableTenants: [],
+      isMultiTenant: false,
+      switchTenant: vi.fn(),
+      isLoadingTenants: false,
+    });
+    const user = userEvent.setup();
+    render(<Navbar />);
+    await user.click(screen.getByRole('button', { name: /Menu Principal/i }));
+    await screen.findAllByRole('link', { name: /Central de Ajuda/i });
+    expect(screen.queryByRole('link', { name: /Conectar Google Ads/i })).not.toBeInTheDocument();
+  });
+
+  // google-ads-conectar-no-admin RF-06: a conta da plataforma se conecta só pelo
+  // painel admin; no CRM o operador conecta o tenant ativo, como todo mundo.
+  it('o operador conecta o tenant ativo, sem "(MCC)" nem "agência"', async () => {
     sessao('GlobalAdmin');
     const user = userEvent.setup();
     render(<Navbar />);
     await user.click(screen.getByRole('button', { name: /Menu Principal/i }));
-    expect(screen.getAllByRole('link', { name: 'Conectar Google Ads (MCC)' }).length).toBeGreaterThan(0);
+    expect(screen.getAllByRole('link', { name: 'Conectar Google Ads' }).length).toBeGreaterThan(0);
+    expect(screen.queryByRole('link', { name: /MCC/ })).not.toBeInTheDocument();
     expect(screen.queryByText(/Agência/i)).not.toBeInTheDocument();
+    expect(getGoogleAdsAuthUrl).toHaveBeenCalledWith('tenant-A');
+    expect(getGoogleAdsAuthUrl).not.toHaveBeenCalledWith('MASTER');
   });
 });
