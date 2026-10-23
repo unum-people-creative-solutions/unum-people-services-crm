@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import { X, Cookie } from "lucide-react";
 
-const POLITICA_PRIVACIDADE_URL = "https://unumpeople.com.br/termos/5558327c-6ee1-4549-8e1b-dc03fdae516a/v1";
+const POLITICA_PRIVACIDADE_URL = "https://unumpeople.com.br/termos/5558327c-6ee1-4549-8e1b-dc03fdae516a/v2";
 
 export default function CookieBanner() {
   const [showBanner, setShowBanner] = useState(false);
@@ -32,8 +32,8 @@ export default function CookieBanner() {
           <div className="space-y-1">
             <h3 className="font-bold text-gray-900 leading-none">Nós valorizamos sua privacidade</h3>
             <p className="text-sm text-gray-500 leading-relaxed">
-              Utilizamos cookies para melhorar sua experiência, analisar o tráfego e personalizar conteúdos. 
-              Ao clicar em &quot;Aceitar Tudo&quot;, você concorda com o uso de todos os cookies descritos em nossa{" "}
+              Guardamos no navegador só o necessário para manter seu login e lembrar esta escolha. 
+              Não usamos cookies de análise de tráfego nem de publicidade. Saiba mais na{" "}
               <a href={POLITICA_PRIVACIDADE_URL} target="_blank" rel="noopener noreferrer" className="text-primary-600 font-semibold hover:underline">Política de Privacidade</a>.
             </p>
           </div>
