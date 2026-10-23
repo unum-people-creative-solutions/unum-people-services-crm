@@ -6,8 +6,8 @@ import Image from "next/image";
 import { CheckCircle, BarChart3, Users, Zap, ShieldCheck, FileText, Smartphone } from "lucide-react";
 import { redirectToHostedUI } from "@/lib/pkce";
 
-const TERMOS_DE_USO_URL = "https://unumpeople.com.br/termos/9824049f-1b1b-4391-b271-53230c69f9b9/v1";
-const POLITICA_PRIVACIDADE_URL = "https://unumpeople.com.br/termos/5558327c-6ee1-4549-8e1b-dc03fdae516a/v1";
+const TERMOS_DE_USO_URL = "https://unumpeople.com.br/termos/9824049f-1b1b-4391-b271-53230c69f9b9/v2";
+const POLITICA_PRIVACIDADE_URL = "https://unumpeople.com.br/termos/5558327c-6ee1-4549-8e1b-dc03fdae516a/v2";
 
 export default function LandingPage() {
   useEffect(() => {
