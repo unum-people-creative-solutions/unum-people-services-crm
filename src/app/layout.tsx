@@ -18,7 +18,7 @@ export const viewport: Viewport = {
 
 export const metadata: Metadata = {
   title: "CRM | Unum People",
-  description: "Gestão inteligente de leads e tráfego",
+  description: "Receba os contatos da sua página, acompanhe cada um até virar cliente e seja avisado no celular.",
   manifest: "/manifest.json",
   icons: {
     icon: "/icons/icon-192x192.png",
