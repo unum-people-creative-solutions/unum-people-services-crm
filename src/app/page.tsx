@@ -58,7 +58,7 @@ export default function LandingPage() {
               Entrar
             </button>
             <a
-              href="https://unumpeople.app/#planos"
+              href="https://unumpeople.app/crm"
               className="w-full sm:w-auto text-support-grey font-bold text-lg hover:text-brand-blue transition-colors"
             >
               Ainda não é cliente? Conheça os planos
@@ -116,7 +116,7 @@ export default function LandingPage() {
           </p>
           <div className="flex flex-col items-center justify-center gap-5">
             <a
-              href="https://unumpeople.app/#planos"
+              href="https://unumpeople.app/crm"
               className="w-full sm:w-auto bg-brand-orange text-white px-12 py-5 rounded-2xl font-black text-xl hover:brightness-110 transition-all shadow-xl hover:scale-[1.02] active:scale-[0.98]"
             >
               Conhecer os planos

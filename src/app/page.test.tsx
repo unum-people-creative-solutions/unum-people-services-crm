@@ -19,7 +19,8 @@ vi.mock('next/link', () => ({
   ),
 }));
 
-const PLANOS = 'https://unumpeople.app/#planos';
+// pagina-crm RF-13: quem ainda não é cliente vai à página do CRM no configurador.
+const PLANOS = 'https://unumpeople.app/crm';
 
 // campanha-pagina T06: textos do DESIGN-BLUEPRINT-crm-home §4, como literais.
 const CARTOES = [
