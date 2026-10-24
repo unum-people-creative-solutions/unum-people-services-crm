@@ -3,7 +3,7 @@
 import { useEffect, useState, useRef, Suspense, useCallback } from "react";
 import { useSearchParams } from "next/navigation";
 import { DragDropContext, Droppable, Draggable } from "@hello-pangea/dnd";
-import api, { LeadService, TenantService, LeadData, MonthSale, mensagemDeErro } from "@/services/api";
+import api, { LeadService, TenantService, LeadData, LeadSale, MonthSale, mensagemDeErro } from "@/services/api";
 import { useAuthStore } from "@/store/authStore";
 import { useTenant } from "@/contexts/TenantContext";
 import { useAcessosDoCRM } from "@/contexts/AcessosContext";
@@ -189,7 +189,7 @@ function KanbanContent() {
   });
 
   const [editingLeadId, setEditingLeadId] = useState<string | null>(null);
-  const [editingLeadSales, setEditingLeadSales] = useState<any[]>([]);
+  const [editingLeadSales, setEditingLeadSales] = useState<LeadSale[]>([]);
   const [editingLeadStatus, setEditingLeadStatus] = useState<string>("");
   const [editingLeadSource, setEditingLeadSource] = useState<string>("");
 
@@ -1183,7 +1183,7 @@ function KanbanContent() {
                       )}
                     </div>
                     <div className="space-y-2">
-                      {editingLeadSales?.length > 0 ? editingLeadSales.map((s: any) => (
+                      {editingLeadSales?.length > 0 ? editingLeadSales.map((s: LeadSale) => (
                         <div key={s.id} className="bg-gray-50 p-3 rounded-md border">
                           <div className="flex justify-between items-center">
                             <span className="text-xs font-bold text-gray-400">{parseSafeDate(s.data).toLocaleDateString('pt-BR')}</span>

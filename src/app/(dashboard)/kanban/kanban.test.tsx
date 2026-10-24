@@ -4,7 +4,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import KanbanPage from './page';
 import { AcessosService, LeadService, TenantService } from '@/services/api';
 import { AcessosProvider } from '@/contexts/AcessosContext';
-import type { MonthSale } from '@/services/api';
+import type { LeadSale, MonthSale } from '@/services/api';
 import { useAuthStore } from '@/store/authStore';
 import { useTenant } from '@/contexts/TenantContext';
 
@@ -570,26 +570,25 @@ describe('KanbanPage', () => {
   describe('Status do Google Ads por venda (ads-status-final)', () => {
     it('mostra a linha de cada venda com ads e nenhuma na venda sem ads', async () => {
       const user = userEvent.setup();
+      const sales: LeadSale[] = [
+        { id: 's-a', valor: 500, data: '2026-10-15T00:00:00Z', ads: 'aceita' },
+        { id: 's-r', valor: 2000, data: '2026-08-12T00:00:00Z', ads: 'recusada', ads_motivo: 'PROCESSING_ERROR_REASON_EXPIRED_CLICK' },
+        { id: 's-0', valor: 300, data: '2026-07-01T00:00:00Z' },
+      ];
       const lead = {
         id: 'lead-7',
         nome: 'Paula Reis',
         telefone: '11944443333',
         status: 'GANHO',
-        sales: [
-          { id: 's-a', valor: 500, data: '2026-10-15T00:00:00Z', ads: 'aceita' },
-          { id: 's-r', valor: 2000, data: '2026-08-12T00:00:00Z', ads: 'recusada', ads_motivo: 'PROCESSING_ERROR_REASON_EXPIRED_CLICK' },
-          { id: 's-0', valor: 300, data: '2026-07-01T00:00:00Z' },
-        ],
+        sales,
       };
       (LeadService.list as any).mockImplementation((status: string) =>
         Promise.resolve(status === 'GANHO' ? [lead] : [])
       );
 
-      const { container } = render(<AcessosProvider><KanbanPage /></AcessosProvider>);
+      render(<AcessosProvider><KanbanPage /></AcessosProvider>);
       await screen.findByText('Paula Reis');
-      const editButton = container.querySelector('svg.lucide-pen')?.closest('button');
-      expect(editButton).not.toBeNull();
-      await user.click(editButton as HTMLElement);
+      await user.click(screen.getByRole('button', { name: 'Editar lead' }));
 
       expect(await screen.findByText('Google Ads: aceita')).toBeInTheDocument();
       expect(screen.getByText('Google Ads: recusada: o clique no anúncio tem mais de 90 dias')).toBeInTheDocument();

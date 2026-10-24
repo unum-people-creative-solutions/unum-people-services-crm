@@ -48,6 +48,18 @@ export interface LeadData {
   anotacoes?: string;
 }
 
+// Uma venda do lead, como a API devolve em lead.sales. ads e ads_motivo são o
+// resultado do envio ao Google Ads (spec ads-status-final; tags json de domain.Sale).
+export interface LeadSale {
+  id: string;
+  valor: number;
+  data: string;
+  tipo?: string;
+  ads?: string;
+  ads_motivo?: string;
+  ads_request_id?: string;
+}
+
 // Contrato RF-07: GET /leads?view=sales&month=YYYY-MM (uma venda por elemento; o status do lead não filtra).
 export interface MonthSale {
   lead_id: string;
