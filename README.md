@@ -22,6 +22,7 @@ Frontend único em Next.js focado em performance de vendas e atribuição de an�
 ## 2. Integrações & Marketing
 - **Google Ads OAuth:** Integração nativa para autorização de acesso a contas MCC ou contas de clientes, permitindo captura de leads e automação de conversões.
 - **Atribuição de Leads:** Fluxo otimizado para vincular dados de tráfego pago diretamente ao funil de vendas.
+- **Resultado do envio ao Google Ads:** no editor do lead, cada venda mostra "Google Ads: …" com o estado gravado pelo ads-worker em `sale.ads` (aceita, recusada e o motivo, enviada sem confirmação, não enviada e o porquê). Componente `StatusAdsDaVenda` (spec `ads-status-final`).
 
 ## 3. Autenticação (Cognito Hosted UI / SSO)
 Não existe mais tela de login/esqueci-senha/primeiro-acesso própria do app — `AuthGuard` redireciona (`window.location.href`, PKCE) para o domínio Hosted UI (`auth.unumpeople.com.br`, App Client dedicado do CRM, provisionado em `Infraestrutura/unum-people-services-infra`). Fluxo:
