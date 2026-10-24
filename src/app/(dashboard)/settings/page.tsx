@@ -15,7 +15,7 @@ export default function SettingsPage() {
   const { pode, podeNoPortal, erro: erroAcessos } = useAcessosDoCRM();
   // gestao-de-acesso-f5 RF-07: a aba Equipe (link para o Portal) aparece para quem gere usuários no Portal, nunca por grupo ou role antigo.
   const podeVerEquipe = session?.role === "GlobalAdmin" || podeNoPortal("portal.usuarios.gerir");
-  // funil-configurador-f1 US 17: a mesma regra do link "Conectar Google Ads" do menu.
+  // A conexão do Google Ads fica nesta aba, para quem gere integrações ou é GlobalAdmin.
   const podeVerGoogleAds = session?.role === "GlobalAdmin" || pode("crm.integracoes.gerir");
 
   return (
