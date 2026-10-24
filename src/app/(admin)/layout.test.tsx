@@ -41,7 +41,7 @@ describe('(admin) layout', () => {
     expect(await screen.findByTestId('probe')).toBeInTheDocument();
   });
 
-  // gestao-de-acesso-f4 RF-05: o Google Ads da Navbar lê as permissões da empresa ativa.
+  // As telas do CRM (aba Google Ads, kanban) leem /me/acessos da empresa ativa.
   it('deve envolver os filhos com AcessosProvider, que lê /me/acessos da empresa ativa', async () => {
     (useAuthStore as any).mockReturnValue({ session: { tenantId: 't-1', role: 'GlobalAdmin' } });
     (TenantService.list as any).mockResolvedValue([]);

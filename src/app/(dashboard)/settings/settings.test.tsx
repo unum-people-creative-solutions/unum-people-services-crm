@@ -213,8 +213,7 @@ describe('SettingsPage', () => {
   });
 });
 
-// Funil do Configurador, fase 1 (spec funil-configurador-f1 US 17): a aba Google Ads
-// segue a regra do link "Conectar Google Ads" do menu.
+// A aba Google Ads é quem conecta a conta: aparece para crm.integracoes.gerir e GlobalAdmin.
 vi.mock('./_components/TabGoogleAds', () => ({ default: () => <p>conteúdo da aba Google Ads</p> }));
 
 describe('SettingsPage - aba Google Ads', () => {

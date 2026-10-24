@@ -123,7 +123,7 @@ describe('Kanban segue as permissões do CRM', () => {
     await abrirMenu(user);
     expect(screen.getAllByRole('button', { name: /Novo Lead Manual/i }).length).toBeGreaterThan(0);
     expect(screen.getAllByRole('button', { name: /Registrar Nova Venda/i }).length).toBeGreaterThan(0);
-    expect(screen.getAllByRole('link', { name: /Conectar Google Ads/i }).length).toBeGreaterThan(0);
+    expect(screen.queryByRole('link', { name: /Conectar Google Ads/i })).not.toBeInTheDocument();
     expect(arrastes.desligado.every((d) => d === false)).toBe(true);
   });
 
