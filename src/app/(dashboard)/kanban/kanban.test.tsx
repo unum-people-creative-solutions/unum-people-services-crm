@@ -566,6 +566,37 @@ describe('KanbanPage', () => {
     });
   });
 
+  // ads-status-final T08: o editor do lead mostra o resultado do envio de cada venda.
+  describe('Status do Google Ads por venda (ads-status-final)', () => {
+    it('mostra a linha de cada venda com ads e nenhuma na venda sem ads', async () => {
+      const user = userEvent.setup();
+      const lead = {
+        id: 'lead-7',
+        nome: 'Paula Reis',
+        telefone: '11944443333',
+        status: 'GANHO',
+        sales: [
+          { id: 's-a', valor: 500, data: '2026-10-15T00:00:00Z', ads: 'aceita' },
+          { id: 's-r', valor: 2000, data: '2026-08-12T00:00:00Z', ads: 'recusada', ads_motivo: 'PROCESSING_ERROR_REASON_EXPIRED_CLICK' },
+          { id: 's-0', valor: 300, data: '2026-07-01T00:00:00Z' },
+        ],
+      };
+      (LeadService.list as any).mockImplementation((status: string) =>
+        Promise.resolve(status === 'GANHO' ? [lead] : [])
+      );
+
+      const { container } = render(<AcessosProvider><KanbanPage /></AcessosProvider>);
+      await screen.findByText('Paula Reis');
+      const editButton = container.querySelector('svg.lucide-pen')?.closest('button');
+      expect(editButton).not.toBeNull();
+      await user.click(editButton as HTMLElement);
+
+      expect(await screen.findByText('Google Ads: aceita')).toBeInTheDocument();
+      expect(screen.getByText('Google Ads: recusada: o clique no anúncio tem mais de 90 dias')).toBeInTheDocument();
+      expect(screen.getAllByText(/^Google Ads:/)).toHaveLength(2);
+    });
+  });
+
   describe('Recarregamento de Leads ao Trocar Tenant (T06)', () => {
     it('T06 — Kanban: recarrega leads ao trocar tenant', async () => {
       const mockSwitchTenant = vi.fn();

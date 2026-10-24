@@ -23,6 +23,7 @@ import { Input } from "@/components/ui/Input";
 import { PhoneInput } from "@/components/ui/PhoneInput";
 import { CPFInput } from "@/components/ui/CPFInput";
 import { z } from "zod";
+import { StatusAdsDaVenda } from "@/components/StatusAdsDaVenda";
 
 type LeadFormValues = z.infer<typeof leadSchema>;
 
@@ -1183,9 +1184,12 @@ function KanbanContent() {
                     </div>
                     <div className="space-y-2">
                       {editingLeadSales?.length > 0 ? editingLeadSales.map((s: any) => (
-                        <div key={s.id} className="flex justify-between items-center bg-gray-50 p-3 rounded-md border">
-                          <span className="text-xs font-bold text-gray-400">{parseSafeDate(s.data).toLocaleDateString('pt-BR')}</span>
-                          <span className="font-black text-green-700">{formatCurrency(s.valor)}</span>
+                        <div key={s.id} className="bg-gray-50 p-3 rounded-md border">
+                          <div className="flex justify-between items-center">
+                            <span className="text-xs font-bold text-gray-400">{parseSafeDate(s.data).toLocaleDateString('pt-BR')}</span>
+                            <span className="font-black text-green-700">{formatCurrency(s.valor)}</span>
+                          </div>
+                          <StatusAdsDaVenda ads={s.ads} motivo={s.ads_motivo} />
                         </div>
                       )) : <p className="text-center text-xs text-gray-400 py-4 italic">Nenhuma venda registrada.</p>}
                     </div>
