@@ -1,5 +1,5 @@
 import { render } from '@testing-library/react'
-import RootLayout from './layout'
+import RootLayout, { metadata } from './layout'
 import { vi, describe, it, expect } from 'vitest'
 
 // Mock de next/font/google
@@ -44,5 +44,15 @@ describe('RootLayout', () => {
     
     // Verificamos que o background de fundo agora é Absolute White para sobriedade
     expect(body).toHaveClass('bg-white')
+  })
+})
+
+// campanha-pagina T08 / RF-C07: a descrição diz o que o CRM faz, sem "tráfego".
+describe('metadados do CRM', () => {
+  it('título igual e descrição do blueprint', () => {
+    expect(metadata.title).toBe('CRM | Unum People')
+    expect(metadata.description).toBe(
+      'Receba os contatos da sua página, acompanhe cada um até virar cliente e seja avisado no celular.',
+    )
   })
 })
