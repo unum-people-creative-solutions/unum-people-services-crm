@@ -19,10 +19,6 @@ vi.mock('@/store/authStore', () => ({
   useAuthStore: vi.fn(),
 }));
 
-vi.mock('@/lib/google-ads', () => ({
-  getGoogleAdsAuthUrl: vi.fn(() => 'https://ads-auth-url.com'),
-}));
-
 vi.mock('@/contexts/TenantContext', () => ({
   useTenant: vi.fn(),
 }));
