@@ -43,16 +43,6 @@ describe("LandingPage", () => {
     expect(footerLogo?.className).not.toContain("invert");
   });
 
-  // TASK-FE-CRM-003: não existe mais página /login própria do app — os CTAs
-  // "Acessar Painel" e "Login" agora acionam o redirect para o Hosted UI.
-  it('aciona redirectToHostedUI ao clicar em "Acessar Painel"', () => {
-    render(<LandingPage />);
-
-    fireEvent.click(screen.getByRole("button", { name: "Acessar Painel" }));
-
-    expect(mockRedirectToHostedUI).toHaveBeenCalledWith("/");
-  });
-
   it("redireciona para o Hosted UI automaticamente quando rodando em modo standalone (PWA/TWA)", async () => {
     (window.matchMedia as any) = vi.fn().mockImplementation((query) => ({
       matches: true,
@@ -68,11 +58,39 @@ describe("LandingPage", () => {
     });
   });
 
-  it('"Começar Agora" leva direto aos planos, sem passar pelo redirecionamento de /servicos', () => {
-    render(<LandingPage />);
-    expect(screen.getByRole("link", { name: /Começar Agora/ })).toHaveAttribute(
-      "href",
-      "https://unumpeople.app/#planos",
-    );
+  // campanha-pagina RF-C06: os outros dois sinais de app instalado.
+  it("redireciona quando o iOS diz que está na tela de início (navigator.standalone)", async () => {
+    Object.defineProperty(window.navigator, "standalone", { value: true, configurable: true });
+    try {
+      render(<LandingPage />);
+      await waitFor(() => expect(mockRedirectToHostedUI).toHaveBeenCalledWith("/"));
+    } finally {
+      delete (window.navigator as any).standalone;
+    }
+  });
+
+  it("redireciona quando abre pelo app Android (referrer android-app://)", async () => {
+    const original = Object.getOwnPropertyDescriptor(Document.prototype, "referrer");
+    Object.defineProperty(document, "referrer", { value: "android-app://br.com.unumpeople.crm/", configurable: true });
+    try {
+      render(<LandingPage />);
+      await waitFor(() => expect(mockRedirectToHostedUI).toHaveBeenCalledWith("/"));
+    } finally {
+      delete (document as any).referrer;
+      if (original) Object.defineProperty(Document.prototype, "referrer", original);
+    }
+  });
+
+  // campanha-pagina RF-C06, caso negativo: no Safari do iPhone fora da tela de
+  // início `navigator.standalone` existe e vale false; a home pública continua.
+  it("não redireciona num navegador comum, mesmo com navigator.standalone = false", async () => {
+    Object.defineProperty(window.navigator, "standalone", { value: false, configurable: true });
+    try {
+      render(<LandingPage />);
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(mockRedirectToHostedUI).not.toHaveBeenCalled();
+    } finally {
+      delete (window.navigator as any).standalone;
+    }
   });
 });
