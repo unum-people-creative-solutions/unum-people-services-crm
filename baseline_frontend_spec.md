@@ -1,4 +1,4 @@
-# Baseline Frontend Specification - unum-people-services-web
+# Baseline Frontend Specification - unum-people-services-crm
 
 **Data:** 2026-05-19
 **Versão:** 1.1.0
@@ -9,7 +9,7 @@ Este documento descreve o estado atual do frontend da Unum People, servindo como
 ---
 
 ## 1. Visão Geral
-O `unum-people-services-web` é um Painel Administrativo e CRM multi-tenant construído em Next.js. Ele é projetado como um PWA (Progressive Web App) e distribuído via TWA (Trusted Web Activity) para dispositivos Android.
+O `unum-people-services-crm` é um Painel Administrativo e CRM multi-tenant construído em Next.js. Ele é projetado como um PWA (Progressive Web App) e distribuído via TWA (Trusted Web Activity) para dispositivos Android.
 
 - **Objetivo:** Interface para gestão de leads (Kanban), configuração de faturamento, integração com Google Ads e administração global do SaaS.
 - **Público:** Inquilinos (clientes) e Administradores Globais da Unum.
