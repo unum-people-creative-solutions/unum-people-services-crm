@@ -113,8 +113,16 @@ function isLogoutInProgress(): boolean {
 // axios (401 em qualquer chamada à API) — os dois pontos do app que hoje
 // precisam mandar o usuário para reautenticar via Hosted UI, agora que não
 // existe mais uma página /login própria do app para navegar internamente.
-export async function redirectToHostedUI(returnTo: string): Promise<void> {
-  if (isLogoutInProgress()) return;
+//
+// crm-raiz-vai-ao-login RF-04: o Cognito devolve o "Sair" à raiz, que abre o
+// login. A raiz é um documento novo, carregado depois de a navegação do logout
+// terminar, então não há corrida a evitar: ela passa `ignorarTravaDeLogout`.
+// Os demais chamadores continuam respeitando a trava.
+export async function redirectToHostedUI(
+  returnTo: string,
+  opcoes: { ignorarTravaDeLogout?: boolean } = {},
+): Promise<void> {
+  if (!opcoes.ignorarTravaDeLogout && isLogoutInProgress()) return;
   const verifier = generateCodeVerifier();
   sessionStorage.setItem(PKCE_VERIFIER_STORAGE_KEY, verifier);
   sessionStorage.setItem(AUTH_RETURN_TO_STORAGE_KEY, returnTo);

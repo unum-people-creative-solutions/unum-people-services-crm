@@ -1,4 +1,4 @@
-# AGENTS.md — unum-people-services-web
+# AGENTS.md — unum-people-services-crm
 
 Operado sob **TLC 2.0 + tlc-spec-driven v3**. Fases, auto-sizing, Sub-Agent Delegation e Verifier estão na skill — consulte o AGENTS.md da raiz do workspace para contexto completo de projeto.
 

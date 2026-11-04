@@ -1,156 +1,131 @@
-import { fireEvent, render, screen, within } from '@testing-library/react';
-import { vi, describe, it, expect, beforeEach } from 'vitest';
-import LandingPage from './page';
-import { redirectToHostedUI } from '@/lib/pkce';
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { vi, describe, it, expect, beforeEach, afterEach } from "vitest";
+import Raiz from "./page";
+import { useAuthStore } from "@/store/authStore";
+import { logoutFromHostedUI, AUTH_RETURN_TO_STORAGE_KEY } from "@/lib/pkce";
 
-vi.mock('@/lib/pkce', () => ({
-  redirectToHostedUI: vi.fn(),
+// crm-raiz-vai-ao-login: a raiz não tem página de apresentação. Sem sessão vai
+// ao login do Cognito; com sessão vai ao quadro (ou à lista de clientes do operador).
+
+const replace = vi.fn();
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ replace }),
 }));
 
-vi.mock('next/image', () => ({
-  default: (props: any) => <img {...props} />,
-}));
+const AUTHORIZE = "https://auth.unumpeople.com.br/oauth2/authorize";
+const ORIGEM = "https://crm.unumpeople.com.br";
+const locationOriginal = window.location;
 
-vi.mock('next/link', () => ({
-  default: ({ children, href, ...props }: any) => (
-    <a href={href} {...props}>
-      {children}
-    </a>
-  ),
-}));
+// JWT de verdade (só o payload importa para o jwtDecode), com expiração relativa a agora.
+function token(expiraEmSegundos: number): string {
+  const b64 = (o: object) => btoa(JSON.stringify(o)).replace(/=+$/, "");
+  return `${b64({ alg: "none" })}.${b64({ exp: Math.floor(Date.now() / 1000) + expiraEmSegundos })}.assinatura`;
+}
 
-// pagina-crm RF-13: quem ainda não é cliente vai à página do CRM no configurador.
-const PLANOS = 'https://unumpeople.app/crm';
+function entrarComo(role: string, expiraEmSegundos: number) {
+  useAuthStore.getState().setSession({
+    email: "pessoa@exemplo.com",
+    name: "Pessoa",
+    tenantId: "t-1",
+    role,
+    token: token(expiraEmSegundos),
+  });
+}
 
-// campanha-pagina T06: textos do DESIGN-BLUEPRINT-crm-home §4, como literais.
-const CARTOES = [
-  ['Contato direto da página', 'Quem preenche o formulário da sua página aparece em Novos Leads, sem você copiar nada.'],
-  ['Aviso no celular', 'O CRM avisa quando chega contato. No iPhone, o aviso só funciona com o CRM adicionado à tela de início.'],
-  [
-    'Cada pessoa na sua etapa',
-    'Arraste o contato entre Novos Leads, Em Atendimento, Agendados e Ganho e saiba quem está esperando resposta.',
-  ],
-  ['WhatsApp com um toque', 'Abra a conversa com o contato direto do cartão dele, sem salvar o número.'],
-  [
-    'Vendas de cada cliente',
-    'Registre cada venda e veja quanto cada cliente já comprou. Baixe tudo numa planilha quando precisar.',
-  ],
-  ['Também quem chegou por fora', 'Cadastre você mesmo quem veio por indicação ou telefone.'],
-] as const;
-
-const PROIBIDAS = [
-  'android',
-  'google ads',
-  'play store',
-  'ltv',
-  'dashboard',
-  'automatiz',
-  'lgpd',
-  'vanguardista',
-  'princípios norteadores',
-  'marketing de performance',
-  'conversão',
-];
-
-describe('Home pública do CRM (campanha-pagina T06)', () => {
+describe("Raiz do CRM (crm-raiz-vai-ao-login)", () => {
   beforeEach(() => {
-    vi.clearAllMocks();
-    Object.defineProperty(window, 'matchMedia', {
-      writable: true,
-      value: vi.fn().mockImplementation(query => ({
-        matches: false,
-        media: query,
-        onchange: null,
-        addListener: vi.fn(),
-        removeListener: vi.fn(),
-        addEventListener: vi.fn(),
-        removeEventListener: vi.fn(),
-        dispatchEvent: vi.fn(),
-      })),
-    });
+    replace.mockClear();
+    window.sessionStorage.clear();
+    window.localStorage.clear();
+    useAuthStore.getState().logout();
+    delete (window as any).location;
+    window.location = { href: "", origin: ORIGEM } as any;
+    process.env.NEXT_PUBLIC_COGNITO_HOSTED_UI_DOMAIN = "https://auth.unumpeople.com.br";
+    process.env.NEXT_PUBLIC_COGNITO_CRM_CLIENT_ID = "crm-client-id";
   });
 
-  it('hero: rótulo, h1 e apoio do blueprint', () => {
-    render(<LandingPage />);
-
-    expect(screen.getByText('CRM da Unum People')).toBeInTheDocument();
-    expect(
-      screen.getByRole('heading', { level: 1, name: 'Cada contato da sua página, num lugar só.' }),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByText(
-        'Quem preenche o formulário da sua página entra direto no CRM, e o seu celular avisa na hora. Você acompanha cada pessoa até virar cliente.',
-      ),
-    ).toBeInTheDocument();
+  afterEach(() => {
+    vi.restoreAllMocks();
+    window.location = locationOriginal as any;
   });
 
-  it('os h2 vêm na ordem do blueprint', () => {
-    render(<LandingPage />);
+  it("CA-01: sem sessão, vai ao login do Cognito com retorno para a raiz", async () => {
+    render(<Raiz />);
 
-    expect(screen.getAllByRole('heading', { level: 2 }).map((h) => h.textContent)).toEqual([
-      'O que você faz no CRM',
-      'Ainda não usa o CRM?',
-    ]);
+    await waitFor(() => expect(window.location.href).toContain(AUTHORIZE));
+    const url = new URL(window.location.href);
+    expect(url.searchParams.get("redirect_uri")).toBe(`${ORIGEM}/auth/callback`);
+    expect(window.sessionStorage.getItem(AUTH_RETURN_TO_STORAGE_KEY)).toBe("/");
+    expect(replace).not.toHaveBeenCalled();
   });
 
-  it('seis cartões, na ordem, cada título seguido do seu texto', () => {
-    render(<LandingPage />);
+  it("CA-02: logo depois do Sair (trava do logout ativa), a raiz ainda leva ao login", async () => {
+    logoutFromHostedUI();
+    expect(window.location.href).toContain("/logout");
+    // O Cognito devolve a pessoa à raiz: documento novo, mesma aba.
+    window.location = { href: `${ORIGEM}/`, origin: ORIGEM } as any;
 
-    const titulos = screen.getAllByRole('heading', { level: 3 });
-    expect(titulos.map((h) => h.textContent)).toEqual(CARTOES.map(([titulo]) => titulo));
-    // Cada texto pertence ao cartão do seu título: vem logo depois do h3.
-    titulos.forEach((h3, indice) => expect(h3.nextElementSibling?.textContent).toBe(CARTOES[indice][1]));
+    render(<Raiz />);
+
+    await waitFor(() => expect(window.location.href).toContain(AUTHORIZE));
   });
 
-  it('os quatro botões "Entrar" (topo, hero, fechamento, rodapé) levam ao login', () => {
-    render(<LandingPage />);
+  it("CA-04: sessão válida de usuário vai direto ao quadro, sem passar pelo Cognito", async () => {
+    entrarComo("USER", 3600);
 
-    const botoes = screen.getAllByRole('button', { name: 'Entrar' });
-    expect(botoes).toHaveLength(4);
-    botoes.forEach((botao) => fireEvent.click(botao));
-    expect(redirectToHostedUI).toHaveBeenCalledTimes(4);
-    expect(vi.mocked(redirectToHostedUI).mock.calls.every(([destino]) => destino === '/')).toBe(true);
-    expect(screen.queryByRole('button', { name: 'Acessar Painel' })).not.toBeInTheDocument();
+    render(<Raiz />);
+
+    await waitFor(() => expect(replace).toHaveBeenCalledWith("/kanban"));
+    expect(window.location.href).toBe("");
+    // A sessão segue de pé: senão o AuthGuard do quadro mandaria de novo ao Cognito.
+    expect(useAuthStore.getState().isAuthenticated).toBe(true);
+    expect(useAuthStore.getState().session?.role).toBe("USER");
   });
 
-  it('quem ainda não é cliente vai aos planos do configurador, por dois links', () => {
-    render(<LandingPage />);
+  it("CA-05: sessão válida do operador vai à lista de clientes", async () => {
+    entrarComo("GlobalAdmin", 3600);
 
-    expect(screen.getByRole('link', { name: 'Ainda não é cliente? Conheça os planos' })).toHaveAttribute('href', PLANOS);
-    expect(screen.getByRole('link', { name: 'Conhecer os planos' })).toHaveAttribute('href', PLANOS);
+    render(<Raiz />);
+
+    await waitFor(() => expect(replace).toHaveBeenCalledWith("/tenants"));
+    expect(window.location.href).toBe("");
+    expect(useAuthStore.getState().isAuthenticated).toBe(true);
+    expect(useAuthStore.getState().session?.role).toBe("GlobalAdmin");
   });
 
-  it('o fechamento explica que o CRM vem num plano com página e blog', () => {
-    render(<LandingPage />);
+  it("CA-10: se o login não puder ser aberto, a tela avisa e oferece tentar de novo", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    delete process.env.NEXT_PUBLIC_COGNITO_HOSTED_UI_DOMAIN;
 
-    expect(
-      screen.getByText(
-        'Ele vem junto com a página e o blog, num dos planos da Unum People. Você monta a página e vê como fica antes de pagar.',
-      ),
-    ).toBeInTheDocument();
-    expect(screen.getByText('Já é cliente?')).toBeInTheDocument();
+    render(<Raiz />);
+
+    const alerta = await screen.findByRole("alert");
+    expect(alerta).toHaveTextContent("Não foi possível abrir o login.");
+    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+
+    // Com a configuração de volta, "Tentar novamente" abre o login.
+    process.env.NEXT_PUBLIC_COGNITO_HOSTED_UI_DOMAIN = "https://auth.unumpeople.com.br";
+    fireEvent.click(screen.getByRole("button", { name: "Tentar novamente" }));
+    await waitFor(() => expect(window.location.href).toContain(AUTHORIZE));
   });
 
-  it('rodapé: frase, termos de uso na v2 e privacidade na página vigente, em nova aba', () => {
-    render(<LandingPage />);
+  it("CA-06: sessão expirada é limpa e a raiz leva ao login", async () => {
+    entrarComo("USER", -60);
 
-    const rodape = screen.getByRole('contentinfo');
-    expect(within(rodape).getByText('O caminho mais curto entre você e o seu cliente.')).toBeInTheDocument();
-    const termos = within(rodape).getByRole('link', { name: 'Termos de uso' });
-    expect(termos).toHaveAttribute('href', 'https://unumpeople.com.br/termos/9824049f-1b1b-4391-b271-53230c69f9b9/v2');
-    const privacidade = within(rodape).getByRole('link', { name: 'Privacidade' });
-    expect(privacidade).toHaveAttribute('href', 'https://unumpeople.com.br/privacidade');
-    for (const link of [termos, privacidade]) {
-      expect(link).toHaveAttribute('target', '_blank');
-      expect(link).toHaveAttribute('rel', 'noopener noreferrer');
-    }
+    render(<Raiz />);
+
+    await waitFor(() => expect(window.location.href).toContain(AUTHORIZE));
+    expect(useAuthStore.getState().isAuthenticated).toBe(false);
+    expect(useAuthStore.getState().session).toBeNull();
+    expect(replace).not.toHaveBeenCalled();
   });
 
-  it('não promete o que o produto não faz (lista proibida)', () => {
-    const { container } = render(<LandingPage />);
+  it("CA-07: não mostra apresentação, só o indicador de carregamento", () => {
+    render(<Raiz />);
 
-    // Texto e atributos (alt, aria-label, title): nada promete o que não existe.
-    const texto = `${container.textContent ?? ''} ${container.innerHTML}`.toLowerCase();
-    for (const expressao of PROIBIDAS) expect(texto).not.toContain(expressao);
+    expect(screen.getByRole("status")).toBeInTheDocument();
+    expect(screen.queryByRole("button")).not.toBeInTheDocument();
+    expect(screen.queryByRole("heading")).not.toBeInTheDocument();
+    expect(screen.queryByRole("link")).not.toBeInTheDocument();
   });
 });
