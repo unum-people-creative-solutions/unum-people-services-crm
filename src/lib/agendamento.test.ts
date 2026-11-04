@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, afterEach } from 'vitest';
 import {
   paraUTC,
   partesEmBrasilia,
@@ -218,5 +218,46 @@ describe('CA-30 — regra única de inatividade (mesma tabela do Go)', () => {
   it('referência: sem nenhuma data → null, e a cor fica azul', () => {
     expect(referenciaDeInatividade({}, 'NOVO')).toBeNull();
     expect(corDeInatividade({}, 'NOVO', agora)).toBe('azul');
+  });
+});
+
+// Lacuna 2 do validation.md (mutação E13): o fuso do processo não pode mudar a
+// conversão. O Node relê process.env.TZ a cada atribuição, então trocar o TZ
+// aqui muda o fuso local de Date (getHours, parse sem deslocamento).
+describe('as conversões independem do fuso do processo', () => {
+  const tzOriginal = process.env.TZ;
+  afterEach(() => {
+    process.env.TZ = tzOriginal;
+  });
+
+  // 2026-11-10T15:00:00Z: 00:00 do dia 11 em Tóquio (UTC+9), 10:00 em Nova York (UTC-5).
+  it.each([
+    ['Asia/Tokyo', 0],
+    ['America/New_York', 10],
+  ])('%s', (fuso, horaLocalEsperada) => {
+    process.env.TZ = fuso;
+    // Sentinela: a troca de fuso valeu para Date neste processo.
+    expect(new Date('2026-11-10T15:00:00Z').getHours()).toBe(horaLocalEsperada);
+
+    // Digitado em Brasília → agendado_em em UTC.
+    expect(paraUTC('2026-11-05', '15:30')).toBe('2026-11-05T18:30:00Z');
+    expect(paraUTC('2026-11-05', '22:30')).toBe('2026-11-06T01:30:00Z');
+
+    // agendado_em → texto em Brasília (modal, cartão e WhatsApp).
+    expect(partesEmBrasilia('2026-11-06T01:30:00Z')).toEqual({ data: '2026-11-05', hora: '22:30' });
+    expect(formatarAgendamento('2026-11-06T01:30:00Z')).toBe('qui 05/11 às 22:30');
+    expect(
+      mensagemDeLembrete({ nome: 'Maria Silva', negocio: 'Consultório Ana Lima', iso: '2026-11-05T18:30:00Z' }),
+    ).toBe(
+      'Olá, Maria! Lembrando do seu horário com Consultório Ana Lima: quinta-feira, 05/11, às 15:30. Se precisar remarcar, é só responder esta mensagem.',
+    );
+
+    // Ida e volta pelo modal.
+    const { data, hora } = partesEmBrasilia('2026-11-12T18:30:00Z');
+    expect(paraUTC(data, hora)).toBe('2026-11-12T18:30:00Z');
+  });
+
+  it('o fuso volta ao de Brasília depois de cada caso', () => {
+    expect(new Date('2026-11-10T15:00:00Z').getHours()).toBe(12);
   });
 });
