@@ -24,6 +24,7 @@ import { PhoneInput } from "@/components/ui/PhoneInput";
 import { CPFInput } from "@/components/ui/CPFInput";
 import { z } from "zod";
 import { StatusAdsDaVenda } from "@/components/StatusAdsDaVenda";
+import { AgendamentoModal } from "@/components/AgendamentoModal";
 
 type LeadFormValues = z.infer<typeof leadSchema>;
 
@@ -175,6 +176,13 @@ function KanbanContent() {
   // Trava de clique duplo em "Confirmar Venda" (a ref bloqueia reenvios antes do re-render)
   const [isSubmittingSale, setIsSubmittingSale] = useState(false);
   const submittingSaleRef = useRef(false);
+
+  // Agendamento (spec crm-agendamento-e-lembretes RF-53/RF-54): o modal pede data
+  // e hora ao mover para "Agendados" (modo mover) ou ao alterar o horário (modo alterar).
+  const [agendamento, setAgendamento] = useState<{ leadId: string; nome: string; modo: "mover" | "alterar"; valorInicial?: string } | null>(null);
+  const [enviandoAgendamento, setEnviandoAgendamento] = useState(false);
+  const [erroAgendamento, setErroAgendamento] = useState<string | null>(null);
+  const enviandoAgendamentoRef = useRef(false);
 
   // Forms
   const createLeadForm = useForm<LeadFormValues>({
@@ -552,12 +560,54 @@ function KanbanContent() {
     setPendingMove(null);
   };
 
+  // Mover: o horário atual só preenche o modal se ainda for futuro (blueprint §2.1).
+  const abrirAgendamento = (lead: any, modo: "mover" | "alterar") => {
+    const atual: string | undefined = lead?.agendado_em;
+    const futuro = !!atual && Date.parse(atual) > Date.now();
+    setErroAgendamento(null);
+    setAgendamento({
+      leadId: lead.id,
+      nome: lead.nome,
+      modo,
+      valorInicial: modo === "alterar" ? atual : futuro ? atual : undefined,
+    });
+  };
+
+  const confirmarAgendamento = async (iso: string) => {
+    if (!agendamento || enviandoAgendamentoRef.current) return;
+    enviandoAgendamentoRef.current = true;
+    setEnviandoAgendamento(true);
+    setErroAgendamento(null);
+    try {
+      await LeadService.agendar(agendamento.leadId, iso, activeTenantId);
+      setAgendamento(null);
+      loadLeads(true);
+    } catch (err) {
+      console.error(err);
+      setErroAgendamento(mensagemDeErro(err, "Não foi possível salvar o horário. Tente de novo."));
+    } finally {
+      enviandoAgendamentoRef.current = false;
+      setEnviandoAgendamento(false);
+    }
+  };
+
+  // Sem data, o cartão não entra em "Agendados" (O1): cancelar o modo mover devolve o quadro.
+  const cancelarAgendamento = () => {
+    const modo = agendamento?.modo;
+    setAgendamento(null);
+    setErroAgendamento(null);
+    if (modo === "mover") loadLeads(true);
+  };
+
   const onDragEnd = async (result: any) => {
     if (!podeEditar) return;
     const { source, destination, draggableId } = result;
     
     // Se não mudou de lugar, não faz nada
     if (!destination || (source.droppableId === destination.droppableId && source.index === destination.index)) return;
+
+    // "Agendados" é ordenado pela data: reordenar à mão não grava nada.
+    if (source.droppableId === "AGENDADO" && destination.droppableId === "AGENDADO") return;
 
     // 1. ATUALIZAÇÃO OTIMISTA IMEDIATA (Evita o card pular de volta)
     const newBoardData = { ...boardData };
@@ -578,6 +628,12 @@ function KanbanContent() {
     const destColDef = COLUMNS.find(c => c.id === destination.droppableId);
 
     // 2. LÓGICA DE MODAIS (Mantém o card no destino enquanto aguarda)
+    // "Agendados" pede data e hora, de qualquer coluna (substitui o "Mover para trás?").
+    if (destination.droppableId === "AGENDADO") {
+      if (movedLead) abrirAgendamento(movedLead, "mover");
+      return;
+    }
+
     if (destination.droppableId === "GANHO") {
       setPendingMove({ draggableId, sourceId: source.droppableId, destinationId: destination.droppableId, sourceIndex: source.index, destinationIndex: destination.index });
       setIsSaleModalOpen(true);
@@ -1307,6 +1363,17 @@ function KanbanContent() {
         )}
       </AnimatePresence>
 
+      <AgendamentoModal
+        aberto={!!agendamento}
+        modo={agendamento?.modo ?? "mover"}
+        nomeDoLead={agendamento?.nome ?? ""}
+        valorInicial={agendamento?.valorInicial}
+        enviando={enviandoAgendamento}
+        erro={erroAgendamento}
+        onConfirmar={confirmarAgendamento}
+        onCancelar={cancelarAgendamento}
+      />
+
       {/* Quick Move Modal (Bottom Sheet) */}
       <AnimatePresence>
         {isQuickMoveModalOpen && quickMoveLead && (
@@ -1357,7 +1424,9 @@ function KanbanContent() {
                           destinationId: col.id
                         };
 
-                        if (col.id === "GANHO") {
+                        if (col.id === "AGENDADO") {
+                          abrirAgendamento(quickMoveLead, "mover");
+                        } else if (col.id === "GANHO") {
                           setPendingMove(moveData);
                           setIsSaleModalOpen(true);
                         } else if (destColDef.order < (sourceColDef?.order || 0)) {
