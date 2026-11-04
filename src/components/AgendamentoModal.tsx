@@ -46,7 +46,9 @@ function ConteudoDoModal({ modo, nomeDoLead, valorInicial, enviando, erro, onCon
   const [hora, setHora] = useState(inicial.hora);
   const [erroData, setErroData] = useState<string | null>(null);
   const [erroHora, setErroHora] = useState<string | null>(null);
-  const [isMobile, setIsMobile] = useState(false);
+  // Lido já no primeiro render: o modal só monta no navegador, e trocar a variante
+  // depois deixaria a folha presa no meio da animação do desktop (opacidade ~0,15).
+  const [isMobile, setIsMobile] = useState(() => typeof window !== "undefined" && window.innerWidth < 768);
   const [limites] = useState(() => limitesDaData(new Date()));
 
   const idBase = useId();

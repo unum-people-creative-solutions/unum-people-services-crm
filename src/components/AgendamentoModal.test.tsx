@@ -6,6 +6,19 @@ import { AgendamentoModal } from './AgendamentoModal';
 // spec crm-agendamento-e-lembretes, CA-52; blueprint §2 (textos literais).
 // "agora" = 2026-11-10T15:00:00Z (12:00 em Brasília); o vitest roda com TZ=America/Sao_Paulo.
 
+// O framer-motion é trocado por um div que guarda as props de animação da folha,
+// para conferir a variante escolhida já no primeiro render (celular x desktop).
+const animacao = vi.hoisted(() => ({ dialogo: [] as { initial: unknown; animate: unknown }[] }));
+vi.mock('framer-motion', () => ({
+  motion: {
+    div: ({ children, initial, animate, exit, transition, drag, dragConstraints, dragElastic, onDragEnd, ...props }: any) => {
+      if (props.role === 'dialog') animacao.dialogo.push({ initial, animate });
+      return <div {...props}>{children}</div>;
+    },
+  },
+  AnimatePresence: ({ children }: any) => <>{children}</>,
+}));
+
 type Props = Parameters<typeof AgendamentoModal>[0];
 
 function montar(over: Partial<Props> = {}) {
@@ -211,6 +224,27 @@ describe('AgendamentoModal (CA-52)', () => {
     montar({ nomeDoLead: '<b>Maria</b>' });
     expect(screen.getByText('<b>Maria</b>')).toBeInTheDocument();
     expect(screen.getByRole('dialog').querySelector('b')).toBeNull();
+  });
+
+  describe('variante da folha no primeiro render (a animação não pode trocar no meio)', () => {
+    const larguraOriginal = window.innerWidth;
+    afterEach(() => {
+      Object.defineProperty(window, 'innerWidth', { configurable: true, value: larguraOriginal });
+    });
+
+    it('a 375px já nasce como folha de baixo (y: 100%), sem passar pela variante do desktop', () => {
+      Object.defineProperty(window, 'innerWidth', { configurable: true, value: 375 });
+      animacao.dialogo = [];
+      montar();
+      expect(animacao.dialogo[0]).toEqual({ initial: { y: '100%' }, animate: { y: 0 } });
+    });
+
+    it('a 1280px nasce como cartão central', () => {
+      Object.defineProperty(window, 'innerWidth', { configurable: true, value: 1280 });
+      animacao.dialogo = [];
+      montar();
+      expect(animacao.dialogo[0]).toEqual({ initial: { scale: 0.9, opacity: 0 }, animate: { scale: 1, opacity: 1 } });
+    });
   });
 
   it('fechado, não renderiza nada; ao fechar, o foco volta ao elemento de antes', () => {
