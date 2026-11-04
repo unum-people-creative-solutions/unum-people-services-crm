@@ -25,7 +25,7 @@ import { CPFInput } from "@/components/ui/CPFInput";
 import { z } from "zod";
 import { StatusAdsDaVenda } from "@/components/StatusAdsDaVenda";
 import { AgendamentoModal } from "@/components/AgendamentoModal";
-import { corDeInatividade, formatarAgendamento, ordenarAgendados, referenciaDeInatividade } from "@/lib/agendamento";
+import { corDeInatividade, formatarAgendamento, linkDeLembrete, mensagemDeLembrete, ordenarAgendados, referenciaDeInatividade } from "@/lib/agendamento";
 
 type LeadFormValues = z.infer<typeof leadSchema>;
 
@@ -849,6 +849,10 @@ function KanbanContent() {
                                     {col.id === "AGENDADO" && (() => {
                                       const agendadoEm: string | undefined = lead.agendado_em;
                                       const futuro = !!agendadoEm && Date.parse(agendadoEm) > Date.now();
+                                      // Lembrete por WhatsApp (O7): só agendamento futuro e telefone utilizável; nada de anotações.
+                                      const lembrete = futuro && agendadoEm
+                                        ? linkDeLembrete(lead.telefone || "", mensagemDeLembrete({ nome: lead.nome || "", negocio: activeTenantName || "", iso: agendadoEm }))
+                                        : null;
                                       return (
                                         <div className="mt-2 flex flex-col gap-1">
                                           {agendadoEm ? (
@@ -863,8 +867,9 @@ function KanbanContent() {
                                               <AlertTriangle size={12} className="shrink-0 mt-px" aria-hidden="true" />O horário passou: registre o que aconteceu.
                                             </p>
                                           )}
-                                          {podeEditar && (
+                                          {(podeEditar || lembrete) && (
                                             <div className="flex flex-wrap gap-x-3 gap-y-1">
+                                              {podeEditar && (
                                               <button
                                                 type="button"
                                                 onClick={(e) => { e.stopPropagation(); abrirAgendamento(lead, "alterar"); }}
@@ -872,6 +877,19 @@ function KanbanContent() {
                                               >
                                                 {agendadoEm ? "Alterar horário" : "Marcar horário"}
                                               </button>
+                                              )}
+                                              {lembrete && (
+                                                <a
+                                                  href={lembrete}
+                                                  target="_blank"
+                                                  rel="noopener noreferrer"
+                                                  aria-describedby={`agendamento-${lead.id}`}
+                                                  onClick={(e) => e.stopPropagation()}
+                                                  className="text-[11px] font-bold text-green-600 hover:bg-green-50 rounded flex items-center gap-1 focus:outline-none focus-visible:ring-2 focus-visible:ring-green-600"
+                                                >
+                                                  <MessageCircle size={12} className="shrink-0" aria-hidden="true" />Lembrar pelo WhatsApp
+                                                </a>
+                                              )}
                                             </div>
                                           )}
                                         </div>

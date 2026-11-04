@@ -467,6 +467,85 @@ describe('Quadro: agendamento', () => {
     });
   });
 
+  describe('CA-58 — "Lembrar pelo WhatsApp"', () => {
+    const mensagem =
+      'Olá, Maria! Lembrando do seu horário com Consultório Ana Lima: quinta-feira, 12/11, às 15:30. Se precisar remarcar, é só responder esta mensagem.';
+
+    it('href exato com a mensagem pronta, target _blank e rel noopener noreferrer', async () => {
+      quadro = {
+        AGENDADO: [
+          lead({
+            id: 'l1',
+            nome: 'Maria Silva',
+            status: 'AGENDADO',
+            telefone: '(81) 99999-0000',
+            email: 'maria@exemplo.com',
+            agendado_em: '2026-11-12T18:30:00Z',
+          }),
+        ],
+      };
+      renderKanban();
+      await screen.findByText('Maria Silva');
+
+      const link = screen.getByRole('link', { name: 'Lembrar pelo WhatsApp' });
+      expect(link.textContent).toBe('Lembrar pelo WhatsApp');
+      expect(link).toHaveAttribute('href', 'https://wa.me/5581999990000?text=' + encodeURIComponent(mensagem));
+      expect(link).toHaveAttribute('target', '_blank');
+      expect(link).toHaveAttribute('rel', 'noopener noreferrer');
+      const descricao = document.getElementById(link.getAttribute('aria-describedby') as string);
+      expect(descricao?.textContent).toBe('Agendado para qui 12/11 às 15:30');
+    });
+
+    it('a mensagem não leva anotação, e-mail nem telefone do lead', async () => {
+      quadro = {
+        AGENDADO: [
+          {
+            ...lead({ id: 'l1', nome: 'Maria Silva', status: 'AGENDADO', email: 'maria@exemplo.com', agendado_em: '2026-11-12T18:30:00Z' }),
+            anotacoes: 'ansiedade, primeira consulta',
+          } as LeadDaApi,
+        ],
+      };
+      renderKanban();
+      await screen.findByText('Maria Silva');
+      const texto = decodeURIComponent(
+        (screen.getByRole('link', { name: 'Lembrar pelo WhatsApp' }).getAttribute('href') as string).split('?text=')[1],
+      );
+      expect(texto).toBe(mensagem);
+      expect(texto).not.toContain('ansiedade');
+      expect(texto).not.toContain('maria@exemplo.com');
+    });
+
+    it('horário passado: nenhum link', async () => {
+      quadro = { AGENDADO: [lead({ id: 'l1', nome: 'Maria Silva', status: 'AGENDADO', agendado_em: '2026-11-09T18:30:00Z' })] };
+      renderKanban();
+      await screen.findByText('Maria Silva');
+      expect(screen.getByRole('status')).toBeInTheDocument();
+      expect(screen.queryByRole('link', { name: 'Lembrar pelo WhatsApp' })).not.toBeInTheDocument();
+    });
+
+    it('telefone inutilizável ou sem horário: nenhum link', async () => {
+      quadro = {
+        AGENDADO: [
+          lead({ id: 'l1', nome: 'Maria Silva', status: 'AGENDADO', telefone: '99990000', agendado_em: '2026-11-12T18:30:00Z' }),
+          lead({ id: 'l2', nome: 'Ana Souza', status: 'AGENDADO' }),
+        ],
+      };
+      renderKanban();
+      await screen.findByText('Maria Silva');
+      expect(screen.queryByRole('link', { name: 'Lembrar pelo WhatsApp' })).not.toBeInTheDocument();
+    });
+
+    it('só com crm.lead.ver, o link aparece (é só leitura) e "Alterar horário" não', async () => {
+      (AcessosService.get as any).mockResolvedValue(acessos(LEITOR));
+      quadro = { AGENDADO: [lead({ id: 'l1', nome: 'Maria Silva', status: 'AGENDADO', agendado_em: '2026-11-12T18:30:00Z' })] };
+      renderKanban();
+      await screen.findByText('Maria Silva');
+      await screen.findAllByRole('button', { name: 'Ver lead' });
+      expect(screen.getByRole('link', { name: 'Lembrar pelo WhatsApp' })).toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: 'Alterar horário' })).not.toBeInTheDocument();
+    });
+  });
+
   describe('CA-54 — "Mover lead" → "Agendados"', () => {
     it('abre o dialog "Agendar horário" e não chama updateStatus', async () => {
       const user = userEvent.setup();
