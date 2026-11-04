@@ -856,7 +856,7 @@ function KanbanContent() {
                                       return (
                                         <div className="mt-2 flex flex-col gap-1">
                                           {agendadoEm ? (
-                                            <p id={`agendamento-${lead.id}`} className="text-xs font-bold text-brand-blue flex items-center gap-1">
+                                            <p id={`agendamento-${lead.id}`} className="text-xs font-bold tracking-tight text-brand-blue flex items-center gap-0.5">
                                               <Calendar size={12} className="shrink-0" aria-hidden="true" />{`Agendado para ${formatarAgendamento(agendadoEm)}`}
                                             </p>
                                           ) : (
