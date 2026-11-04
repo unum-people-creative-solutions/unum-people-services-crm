@@ -1,5 +1,5 @@
 import { vi, describe, it, expect, beforeEach, afterEach, beforeAll } from 'vitest';
-import type { MonthSale } from './api';
+import type { LeadAgendamento, MonthSale } from './api';
 
 const mockResponseInterceptors = vi.hoisted(() => ({
   success: null as any,
@@ -7,6 +7,7 @@ const mockResponseInterceptors = vi.hoisted(() => ({
 }));
 
 const mockGet = vi.hoisted(() => vi.fn());
+const mockPut = vi.hoisted(() => vi.fn());
 
 vi.mock('axios', () => {
   return {
@@ -14,6 +15,7 @@ vi.mock('axios', () => {
       create: vi.fn().mockImplementation(() => {
         return {
           get: mockGet,
+          put: mockPut,
           interceptors: {
             request: {
               use: vi.fn(),
@@ -115,5 +117,37 @@ describe('LeadService.listSalesByMonth (T12 — contrato RF-07)', () => {
 
     expect(mockGet).toHaveBeenCalledWith('/leads?view=sales&month=2026-09&tenant_id=t1');
     expect(result).toEqual(sales);
+  });
+});
+
+describe('LeadService.agendar (T31 — contrato RF-51, CA-51)', () => {
+  it('faz PUT /leads/{id}?tenant_id= codificado com corpo exatamente {status, agendado_em}', async () => {
+    mockPut.mockResolvedValue({ data: { message: 'Lead updated successfully' } });
+
+    await LeadService.agendar('l1', '2026-11-05T18:30:00Z', 't 1');
+
+    expect(mockPut).toHaveBeenCalledTimes(1);
+    const [url, corpo] = mockPut.mock.calls[0];
+    expect(url).toBe('/leads/l1?tenant_id=t%201');
+    // Igualdade estrita: nenhuma chave a mais (valor_venda, data_venda...).
+    expect(corpo).toStrictEqual({ status: 'AGENDADO', agendado_em: '2026-11-05T18:30:00Z' });
+    expect(Object.keys(corpo)).toEqual(['status', 'agendado_em']);
+  });
+
+  it('sem tenant, não põe query string', async () => {
+    mockPut.mockResolvedValue({ data: {} });
+    await LeadService.agendar('l1', '2026-11-05T18:30:00Z');
+    expect(mockPut).toHaveBeenLastCalledWith('/leads/l1', { status: 'AGENDADO', agendado_em: '2026-11-05T18:30:00Z' });
+  });
+
+  it('o erro da API sobe para quem chamou (não é engolido)', async () => {
+    const erro = { response: { status: 400, data: { error: 'agendado_em_fora_do_prazo' } } };
+    mockPut.mockRejectedValue(erro);
+    await expect(LeadService.agendar('l1', '2026-11-05T18:30:00Z', 't1')).rejects.toBe(erro);
+  });
+
+  it('LeadAgendamento tipa agendado_em como a string RFC3339 da API', () => {
+    const lead: LeadAgendamento = { agendado_em: '2026-11-05T18:30:00Z' };
+    expect(lead.agendado_em).toBe('2026-11-05T18:30:00Z');
   });
 });
