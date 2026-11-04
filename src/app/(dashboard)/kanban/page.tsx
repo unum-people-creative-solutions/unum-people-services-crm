@@ -25,6 +25,7 @@ import { CPFInput } from "@/components/ui/CPFInput";
 import { z } from "zod";
 import { StatusAdsDaVenda } from "@/components/StatusAdsDaVenda";
 import { AgendamentoModal } from "@/components/AgendamentoModal";
+import { formatarAgendamento } from "@/lib/agendamento";
 
 type LeadFormValues = z.infer<typeof leadSchema>;
 
@@ -850,6 +851,39 @@ function KanbanContent() {
                                         )}
                                       </div>
                                     </div>
+
+                                    {/* Agendamento: só na coluna "Agendados" (blueprint §3) */}
+                                    {col.id === "AGENDADO" && (() => {
+                                      const agendadoEm: string | undefined = lead.agendado_em;
+                                      const futuro = !!agendadoEm && Date.parse(agendadoEm) > Date.now();
+                                      return (
+                                        <div className="mt-2 flex flex-col gap-1">
+                                          {agendadoEm ? (
+                                            <p id={`agendamento-${lead.id}`} className="text-xs font-bold text-brand-blue flex items-center gap-1">
+                                              <Calendar size={12} className="shrink-0" aria-hidden="true" />{`Agendado para ${formatarAgendamento(agendadoEm)}`}
+                                            </p>
+                                          ) : (
+                                            <p className="text-xs text-gray-500">Sem horário marcado</p>
+                                          )}
+                                          {agendadoEm && !futuro && (
+                                            <p role="status" className="bg-amber-50 border border-amber-200 text-amber-800 text-[11px] font-bold rounded px-2 py-1 flex items-start gap-1">
+                                              <AlertTriangle size={12} className="shrink-0 mt-px" aria-hidden="true" />O horário passou: registre o que aconteceu.
+                                            </p>
+                                          )}
+                                          {podeEditar && (
+                                            <div className="flex flex-wrap gap-x-3 gap-y-1">
+                                              <button
+                                                type="button"
+                                                onClick={(e) => { e.stopPropagation(); abrirAgendamento(lead, "alterar"); }}
+                                                className="text-[11px] font-bold text-brand-blue hover:underline rounded focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-blue"
+                                              >
+                                                {agendadoEm ? "Alterar horário" : "Marcar horário"}
+                                              </button>
+                                            </div>
+                                          )}
+                                        </div>
+                                      );
+                                    })()}
 
                                     {monthTotal > 0 && (
                                       <div className="text-xs font-black text-green-600 mt-2">

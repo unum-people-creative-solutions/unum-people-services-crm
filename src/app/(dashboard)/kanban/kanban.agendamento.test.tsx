@@ -294,6 +294,113 @@ describe('Quadro: agendamento', () => {
     });
   });
 
+  describe('CA-55 — cartão em "Agendados"', () => {
+    it('futuro: "Agendado para qui 12/11 às 15:30" e o botão "Alterar horário"', async () => {
+      quadro = { AGENDADO: [lead({ id: 'l1', nome: 'Maria Silva', status: 'AGENDADO', agendado_em: '2026-11-12T18:30:00Z' })] };
+      renderKanban();
+      await screen.findByText('Maria Silva');
+
+      expect(screen.getByText('Agendado para qui 12/11 às 15:30').textContent).toBe('Agendado para qui 12/11 às 15:30');
+      const alterar = screen.getByRole('button', { name: 'Alterar horário' });
+      expect(alterar.textContent).toBe('Alterar horário');
+      expect(screen.queryByRole('status')).not.toBeInTheDocument();
+    });
+
+    it('passado: a mesma linha, o aviso em role="status" e o botão "Alterar horário"', async () => {
+      quadro = { AGENDADO: [lead({ id: 'l1', nome: 'Maria Silva', status: 'AGENDADO', agendado_em: '2026-11-09T18:30:00Z' })] };
+      renderKanban();
+      await screen.findByText('Maria Silva');
+
+      expect(screen.getByText('Agendado para seg 09/11 às 15:30')).toBeInTheDocument();
+      expect(screen.getByRole('status').textContent).toBe('O horário passou: registre o que aconteceu.');
+      expect(screen.getByRole('button', { name: 'Alterar horário' })).toBeInTheDocument();
+    });
+
+    it('sem agendado_em (legado): "Sem horário marcado" e o botão "Marcar horário"', async () => {
+      quadro = { AGENDADO: [lead({ id: 'l1', nome: 'Maria Silva', status: 'AGENDADO' })] };
+      renderKanban();
+      await screen.findByText('Maria Silva');
+
+      expect(screen.getByText('Sem horário marcado').textContent).toBe('Sem horário marcado');
+      expect(screen.getByRole('button', { name: 'Marcar horário' }).textContent).toBe('Marcar horário');
+      expect(screen.queryByRole('button', { name: 'Alterar horário' })).not.toBeInTheDocument();
+    });
+
+    it('sem crm.lead.editar: nenhum "Alterar horário" nem "Marcar horário" (a data continua visível)', async () => {
+      (AcessosService.get as any).mockResolvedValue(acessos(LEITOR));
+      quadro = {
+        AGENDADO: [
+          lead({ id: 'l1', nome: 'Maria Silva', status: 'AGENDADO', agendado_em: '2026-11-12T18:30:00Z' }),
+          lead({ id: 'l2', nome: 'Ana Souza', status: 'AGENDADO' }),
+        ],
+      };
+      renderKanban();
+      await screen.findByText('Maria Silva');
+      await screen.findAllByRole('button', { name: 'Ver lead' });
+
+      expect(screen.getByText('Agendado para qui 12/11 às 15:30')).toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: 'Alterar horário' })).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: 'Marcar horário' })).not.toBeInTheDocument();
+    });
+
+    it('lead em NOVO com agendado_em: nada do bloco de agendamento', async () => {
+      quadro = { NOVO: [lead({ id: 'l1', nome: 'Maria Silva', status: 'NOVO', agendado_em: '2026-11-12T18:30:00Z' })] };
+      renderKanban();
+      await screen.findByText('Maria Silva');
+
+      expect(screen.queryByText(/^Agendado para/)).not.toBeInTheDocument();
+      expect(screen.queryByText('Sem horário marcado')).not.toBeInTheDocument();
+      expect(screen.queryByRole('status')).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: 'Alterar horário' })).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: 'Marcar horário' })).not.toBeInTheDocument();
+      expect(screen.queryByRole('link', { name: 'Lembrar pelo WhatsApp' })).not.toBeInTheDocument();
+    });
+
+    it('"Alterar horário" abre o modal alterar com o horário atual; salvar chama agendar', async () => {
+      quadro = { AGENDADO: [lead({ id: 'l1', nome: 'Maria Silva', status: 'AGENDADO', agendado_em: '2026-11-12T18:30:00Z' })] };
+      renderKanban();
+      await screen.findByText('Maria Silva');
+
+      fireEvent.click(screen.getByRole('button', { name: 'Alterar horário' }));
+      expect(screen.getByRole('dialog', { name: 'Alterar horário' })).toBeInTheDocument();
+      expect(screen.getByLabelText('Data')).toHaveValue('2026-11-12');
+      expect(screen.getByLabelText('Hora')).toHaveValue('15:30');
+
+      fireEvent.change(screen.getByLabelText('Hora'), { target: { value: '16:00' } });
+      fireEvent.click(screen.getByRole('button', { name: 'Salvar horário' }));
+      await waitFor(() => expect(LeadService.agendar).toHaveBeenCalledWith('l1', '2026-11-12T19:00:00Z', 'tenant-1'));
+    });
+
+    it('"Alterar horário" + Cancelar: nenhuma escrita e o quadro não recarrega', async () => {
+      quadro = { AGENDADO: [lead({ id: 'l1', nome: 'Maria Silva', status: 'AGENDADO', agendado_em: '2026-11-12T18:30:00Z' })] };
+      renderKanban();
+      await screen.findByText('Maria Silva');
+      await waitFor(() => expect(LeadService.list).toHaveBeenCalled());
+      const chamadasAntes = (LeadService.list as any).mock.calls.length;
+
+      const alterar = screen.getByRole('button', { name: 'Alterar horário' });
+      act(() => alterar.focus());
+      fireEvent.click(alterar);
+      fireEvent.click(screen.getByRole('button', { name: 'Cancelar' }));
+
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+      expect(LeadService.agendar).not.toHaveBeenCalled();
+      expect((LeadService.list as any).mock.calls.length).toBe(chamadasAntes);
+      expect(screen.getByRole('button', { name: 'Alterar horário' })).toHaveFocus();
+    });
+
+    it('"Marcar horário" abre o modal alterar com os campos vazios', async () => {
+      quadro = { AGENDADO: [lead({ id: 'l1', nome: 'Maria Silva', status: 'AGENDADO' })] };
+      renderKanban();
+      await screen.findByText('Maria Silva');
+
+      fireEvent.click(screen.getByRole('button', { name: 'Marcar horário' }));
+      expect(screen.getByRole('dialog', { name: 'Alterar horário' })).toBeInTheDocument();
+      expect(screen.getByLabelText('Data')).toHaveValue('');
+      expect(screen.getByLabelText('Hora')).toHaveValue('');
+    });
+  });
+
   describe('CA-54 — "Mover lead" → "Agendados"', () => {
     it('abre o dialog "Agendar horário" e não chama updateStatus', async () => {
       const user = userEvent.setup();
