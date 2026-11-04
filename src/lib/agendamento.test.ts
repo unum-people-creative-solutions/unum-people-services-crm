@@ -187,7 +187,8 @@ describe('CA-30 — regra única de inatividade (mesma tabela do Go)', () => {
   it('parados: #2, #3, #4, #7, #8, #9, #13 = 7', () => {
     const parados = casos.filter((c) => {
       const { n: _n, parado: _p, cor: _c, status, ...campos } = c;
-      return corDeInatividade({ status, ...campos }, status, agora) !== 'azul';
+      const lead = { status, ...campos };
+      return corDeInatividade(lead, status, agora) !== 'azul';
     });
     expect(parados.map((c) => c.n)).toEqual([2, 3, 4, 7, 8, 9, 13]);
   });
