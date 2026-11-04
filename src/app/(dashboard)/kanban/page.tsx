@@ -885,7 +885,7 @@ function KanbanContent() {
                                                   rel="noopener noreferrer"
                                                   aria-describedby={`agendamento-${lead.id}`}
                                                   onClick={(e) => e.stopPropagation()}
-                                                  className="text-[11px] font-bold text-green-600 hover:bg-green-50 rounded flex items-center gap-1 focus:outline-none focus-visible:ring-2 focus-visible:ring-green-600"
+                                                  className="text-[11px] font-bold text-green-700 hover:bg-green-50 rounded flex items-center gap-1 focus:outline-none focus-visible:ring-2 focus-visible:ring-green-700"
                                                 >
                                                   <MessageCircle size={12} className="shrink-0" aria-hidden="true" />Lembrar pelo WhatsApp
                                                 </a>
