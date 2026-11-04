@@ -401,6 +401,72 @@ describe('Quadro: agendamento', () => {
     });
   });
 
+  describe('CA-56 — ordem de "Agendados"', () => {
+    const coluna = (titulo: string) => screen.getByRole('heading', { name: new RegExp(`^${titulo}`) }).parentElement as HTMLElement;
+    const nomesNaColuna = (titulo: string) =>
+      within(coluna(titulo)).queryAllByText(/^Lead [ABCD]$/).map((el) => el.textContent);
+
+    beforeEach(() => {
+      quadro = {
+        AGENDADO: [
+          lead({ id: 'a', nome: 'Lead A', status: 'AGENDADO', agendado_em: '2026-11-12T12:00:00Z' }),
+          lead({ id: 'b', nome: 'Lead B', status: 'AGENDADO' }),
+          lead({ id: 'c', nome: 'Lead C', status: 'AGENDADO', agendado_em: '2026-11-09T12:00:00Z' }),
+          lead({ id: 'd', nome: 'Lead D', status: 'AGENDADO', agendado_em: '2026-11-11T12:00:00Z' }),
+        ],
+      };
+    });
+
+    it('a coluna mostra c, d, a, b (mais próximo em cima, sem data no fim)', async () => {
+      renderKanban();
+      await screen.findByText('Lead A');
+      expect(nomesNaColuna('Agendados')).toEqual(['Lead C', 'Lead D', 'Lead A', 'Lead B']);
+    });
+
+    it('a ordem está no estado: arrastar o índice 0 leva o Lead C', async () => {
+      (LeadService.updateStatus as any).mockReturnValue(new Promise(() => {}));
+      renderKanban();
+      await screen.findByText('Lead A');
+      await arrastar('AGENDADO', 'ATENDIMENTO', 'c', 0);
+
+      expect(nomesNaColuna('Em Atendimento')).toEqual(['Lead C']);
+      expect(nomesNaColuna('Agendados')).toEqual(['Lead D', 'Lead A', 'Lead B']);
+    });
+  });
+
+  describe('CA-57 — inatividade pela referência', () => {
+    it('em "Agendados" com horário futuro, cartão antigo não tem "Inatividade crítica"', async () => {
+      quadro = {
+        AGENDADO: [lead({ id: 'l1', nome: 'Maria Silva', status: 'AGENDADO', updated_at: '2026-11-01T00:00:00Z', agendado_em: '2026-11-11T12:00:00Z' })],
+      };
+      renderKanban();
+      await screen.findByText('Maria Silva');
+      expect(screen.queryByText(/^Inatividade crítica/)).not.toBeInTheDocument();
+      expect(screen.queryByText(/^Atenção: /)).not.toBeInTheDocument();
+    });
+
+    it('o mesmo cartão em "Em Atendimento" tem "Inatividade crítica"', async () => {
+      quadro = {
+        ATENDIMENTO: [lead({ id: 'l1', nome: 'Maria Silva', status: 'ATENDIMENTO', updated_at: '2026-11-01T00:00:00Z', agendado_em: '2026-11-11T12:00:00Z' })],
+      };
+      renderKanban();
+      await screen.findByText('Maria Silva');
+      expect(screen.getByText(/^Inatividade crítica/).textContent).toBe(
+        'Inatividade crítica: mais de 231h sem atualizações. Recomendado: Contato urgente.',
+      );
+    });
+
+    it('em "Agendados" com o horário passado há 25h, conta a partir do horário (laranja)', async () => {
+      quadro = {
+        AGENDADO: [lead({ id: 'l1', nome: 'Maria Silva', status: 'AGENDADO', updated_at: '2026-11-01T00:00:00Z', agendado_em: '2026-11-09T14:00:00Z' })],
+      };
+      renderKanban();
+      await screen.findByText('Maria Silva');
+      expect(screen.getByText(/^Atenção: /).textContent).toBe('Atenção: 25h de inatividade. Recomendado: Enviar follow-up.');
+      expect(screen.queryByText(/^Inatividade crítica/)).not.toBeInTheDocument();
+    });
+  });
+
   describe('CA-54 — "Mover lead" → "Agendados"', () => {
     it('abre o dialog "Agendar horário" e não chama updateStatus', async () => {
       const user = userEvent.setup();

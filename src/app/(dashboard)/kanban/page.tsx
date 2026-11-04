@@ -25,7 +25,7 @@ import { CPFInput } from "@/components/ui/CPFInput";
 import { z } from "zod";
 import { StatusAdsDaVenda } from "@/components/StatusAdsDaVenda";
 import { AgendamentoModal } from "@/components/AgendamentoModal";
-import { formatarAgendamento } from "@/lib/agendamento";
+import { corDeInatividade, formatarAgendamento, ordenarAgendados, referenciaDeInatividade } from "@/lib/agendamento";
 
 type LeadFormValues = z.infer<typeof leadSchema>;
 
@@ -73,8 +73,9 @@ const parseSafeDate = (dateStr: any) => {
   return isNaN(d.getTime()) ? new Date() : d;
 };
 
-// Helper para Inatividade
-const getInactivityStatus = (updatedAt: any, columnId: string) => {
+// Helper para Inatividade: a cor vem da regra única (lib/agendamento, D-AG-7),
+// contada a partir da referência (em "Agendados", o maior entre updated_at e agendado_em).
+const getInactivityStatus = (lead: any, columnId: string) => {
   // Cores (Classes completas para o Tailwind extrair)
   const BLUE = "bg-blue-600";
   const ORANGE = "bg-orange-500";
@@ -82,21 +83,15 @@ const getInactivityStatus = (updatedAt: any, columnId: string) => {
 
   const defaultStatus = { color: BLUE, animate: false, message: "", showTooltip: false };
 
-  if (!["NOVO", "ATENDIMENTO", "AGENDADO"].includes(columnId)) {
-    return defaultStatus;
-  }
-
-  if (!updatedAt) return defaultStatus;
-
-  const lastUpdate = new Date(updatedAt);
   const now = new Date();
-  
-  if (isNaN(lastUpdate.getTime())) return defaultStatus;
+  const cor = corDeInatividade(lead, columnId, now);
+  const referencia = referenciaDeInatividade(lead, columnId);
+  if (cor === "azul" || !referencia) return defaultStatus;
 
-  const diffMs = now.getTime() - lastUpdate.getTime();
+  const diffMs = now.getTime() - referencia.getTime();
   const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
 
-  if (diffHours >= 48) {
+  if (cor === "vermelho") {
     return { 
       color: RED, 
       animate: false, 
@@ -104,16 +99,12 @@ const getInactivityStatus = (updatedAt: any, columnId: string) => {
       showTooltip: true 
     };
   }
-  if (diffHours >= 24) {
-    return { 
-      color: ORANGE, 
-      animate: true, 
-      message: `Atenção: ${diffHours}h de inatividade. Recomendado: Enviar follow-up.`,
-      showTooltip: true 
-    };
-  }
-  
-  return defaultStatus;
+  return { 
+    color: ORANGE, 
+    animate: true, 
+    message: `Atenção: ${diffHours}h de inatividade. Recomendado: Enviar follow-up.`,
+    showTooltip: true 
+  };
 };
 
 function KanbanContent() {
@@ -369,6 +360,8 @@ function KanbanContent() {
         );
         results[status] = data || [];
       }));
+      // "Agendados" pela consulta mais próxima, no estado (os índices do arrastar dependem disso).
+      if (results.AGENDADO) results.AGENDADO = ordenarAgendados(results.AGENDADO);
       
       setBoardData((prev: any) => ({ ...prev, ...results }));
     } catch (err) { 
@@ -784,7 +777,7 @@ function KanbanContent() {
                             {(provided) => {
                               // Tenta encontrar a data de atualização mais recente
                               const lastUpdateDate = lead.updated_at || lead.updatedAt || lead.created_at || lead.createdAt;
-                              const status = getInactivityStatus(lastUpdateDate, col.id);
+                              const status = getInactivityStatus(lead, col.id);
                               
                               return (
                                 <div ref={provided.innerRef} {...provided.draggableProps} {...provided.dragHandleProps} className="bg-white rounded shadow-sm mb-3 hover:shadow-md group relative transition-all w-full overflow-hidden border border-gray-100">
