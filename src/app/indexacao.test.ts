@@ -9,7 +9,7 @@ vi.mock('next/font/google', () => ({
 vi.mock('@/components/AuthGuard', () => ({ default: () => null }))
 vi.mock('@/components/CookieBanner', () => ({ default: () => null }))
 
-import { metadata as raiz } from './layout'
+import { metadata as raizPagina } from './page'
 import { metadata as dashboard } from './(dashboard)/layout'
 import { metadata as admin } from './(admin)/layout'
 import { metadata as acessoNegado } from './acesso-negado/layout'
@@ -31,7 +31,9 @@ describe('indexação das áreas logadas do CRM', () => {
     expect(metadados.robots).toEqual(NAO_INDEXAR)
   })
 
-  it('a landing page (raiz) continua indexável', () => {
-    expect(raiz.robots).toBeUndefined()
+  // crm-raiz-vai-ao-login CA-08: a raiz só leva ao login ou ao quadro; a venda
+  // do CRM é em unumpeople.app/crm.
+  it('a raiz pede para não indexar', () => {
+    expect(raizPagina.robots).toEqual(NAO_INDEXAR)
   })
 })
