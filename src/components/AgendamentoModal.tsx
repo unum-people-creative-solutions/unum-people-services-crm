@@ -108,6 +108,12 @@ function ConteudoDoModal({ modo, nomeDoLead, valorInicial, enviando, erro, onCon
     }
   };
 
+  // O horário é a combinação dos dois campos: editar qualquer um tira os avisos antigos.
+  const limparErros = () => {
+    setErroData(null);
+    setErroHora(null);
+  };
+
   const confirmar = (e: React.FormEvent) => {
     e.preventDefault();
     if (enviando) return;
@@ -187,7 +193,7 @@ function ConteudoDoModal({ modo, nomeDoLead, valorInicial, enviando, erro, onCon
                 min={limites.min}
                 max={limites.max}
                 value={data}
-                onChange={(e) => setData(e.target.value)}
+                onChange={(e) => { setData(e.target.value); limparErros(); }}
                 aria-invalid={erroData ? "true" : undefined}
                 aria-describedby={erroData ? idErroData : undefined}
                 className={classeCampo(!!erroData)}
@@ -201,7 +207,7 @@ function ConteudoDoModal({ modo, nomeDoLead, valorInicial, enviando, erro, onCon
                 type="time"
                 required
                 value={hora}
-                onChange={(e) => setHora(e.target.value)}
+                onChange={(e) => { setHora(e.target.value); limparErros(); }}
                 aria-invalid={erroHora ? "true" : undefined}
                 aria-describedby={erroHora ? idErroHora : undefined}
                 className={classeCampo(!!erroHora)}

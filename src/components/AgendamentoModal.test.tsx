@@ -154,6 +154,25 @@ describe('AgendamentoModal (CA-52)', () => {
     expect(screen.queryByText(/^Faltam menos de uma hora/)).not.toBeInTheDocument();
   });
 
+  it('editar um campo depois do erro tira os avisos antigos (o horário é a combinação dos dois)', () => {
+    montar();
+    fireEvent.change(screen.getByLabelText('Data'), { target: { value: '2027-11-10' } });
+    fireEvent.change(screen.getByLabelText('Hora'), { target: { value: '12:01' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Confirmar agendamento' }));
+    expect(screen.getByText('Escolha uma data nos próximos 12 meses.')).toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText('Data'), { target: { value: '2026-11-10' } });
+    expect(screen.queryByText('Escolha uma data nos próximos 12 meses.')).not.toBeInTheDocument();
+    expect(screen.getByLabelText('Data')).not.toHaveAttribute('aria-invalid');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Confirmar agendamento' }));
+    fireEvent.change(screen.getByLabelText('Hora'), { target: { value: '' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Confirmar agendamento' }));
+    expect(screen.getByText('Informe a hora.')).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText('Data'), { target: { value: '2026-11-11' } });
+    expect(screen.queryByText('Informe a hora.')).not.toBeInTheDocument();
+  });
+
   it('Esc → onCancelar uma vez', () => {
     const { props } = montar();
     fireEvent.keyDown(document.activeElement as Element, { key: 'Escape' });
