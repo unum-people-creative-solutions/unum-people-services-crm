@@ -605,6 +605,21 @@ describe('Quadro: agendamento', () => {
       expect(LeadService.agendar).not.toHaveBeenCalled();
     });
 
+    it('reordenar dentro de "Agendados" segue o fluxo antigo (updateStatus)', async () => {
+      quadro = {
+        AGENDADO: [
+          lead({ id: 'a', nome: 'Lead A', status: 'AGENDADO' }),
+          lead({ id: 'b', nome: 'Lead B', status: 'AGENDADO' }),
+        ],
+      };
+      renderKanban();
+      await screen.findByText('Lead A');
+      await arrastar('AGENDADO', 'AGENDADO', 'a', 1);
+
+      await waitFor(() => expect(LeadService.updateStatus).toHaveBeenCalledTimes(1));
+      expect((LeadService.updateStatus as any).mock.calls[0].slice(0, 2)).toEqual(['a', 'AGENDADO']);
+    });
+
     it('o cartão em "Agendados" não mostra data, aviso, botões nem o lembrete', async () => {
       quadro = {
         AGENDADO: [
