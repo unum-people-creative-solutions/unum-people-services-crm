@@ -7,6 +7,7 @@ import api, { LeadService, TenantService, LeadData, LeadSale, MonthSale, mensage
 import { useAuthStore } from "@/store/authStore";
 import { useTenant } from "@/contexts/TenantContext";
 import { useAcessosDoCRM } from "@/contexts/AcessosContext";
+import { useFlag } from "@/hooks/useFlag";
 import { Plus, X, LogOut, Settings, DollarSign, AlertCircle, Calendar, Eye, EyeOff, Users, Edit2, Mail, Phone, User, Search, TrendingUp, RefreshCw, HelpCircle, Tag, ExternalLink, LayoutGrid, ArrowRightLeft, MessageCircle, Clock, Trash2, AlertTriangle } from "lucide-react";
 import { logoutFromHostedUI } from "@/lib/pkce";
 
@@ -123,6 +124,12 @@ function KanbanContent() {
   const { carregando: carregandoAcessos, erro: erroAcessos, pode } = useAcessosDoCRM();
   const podeEditar = pode("crm.lead.editar");
   const podeVer = pode("crm.lead.ver");
+
+  // Flag crm-agendamento (spec crm-agendamento-e-lembretes RF-78): desligada, o quadro
+  // é o de antes da feature. O ref deixa o loadLeads ler o valor atual sem recarregar.
+  const agendamentoLigado = useFlag("crm-agendamento");
+  const agendamentoLigadoRef = useRef(agendamentoLigado);
+  agendamentoLigadoRef.current = agendamentoLigado;
 
   // "Acessar CRM" na lista de tenants abre /kanban?tenant_id=<id>. Aplica uma
   // vez por valor, depois que a lista carrega (o switchTenant recusa tenant
@@ -361,7 +368,7 @@ function KanbanContent() {
         results[status] = data || [];
       }));
       // "Agendados" pela consulta mais próxima, no estado (os índices do arrastar dependem disso).
-      if (results.AGENDADO) results.AGENDADO = ordenarAgendados(results.AGENDADO);
+      if (results.AGENDADO && agendamentoLigadoRef.current) results.AGENDADO = ordenarAgendados(results.AGENDADO);
       
       setBoardData((prev: any) => ({ ...prev, ...results }));
     } catch (err) { 
@@ -554,6 +561,12 @@ function KanbanContent() {
     setPendingMove(null);
   };
 
+  // A flag pode ligar depois da carga: a coluna passa a seguir a data.
+  useEffect(() => {
+    if (!agendamentoLigado) return;
+    setBoardData((prev: any) => (prev.AGENDADO ? { ...prev, AGENDADO: ordenarAgendados(prev.AGENDADO) } : prev));
+  }, [agendamentoLigado]);
+
   // Mover: o horário atual só preenche o modal se ainda for futuro (blueprint §2.1).
   const abrirAgendamento = (lead: any, modo: "mover" | "alterar") => {
     const atual: string | undefined = lead?.agendado_em;
@@ -601,7 +614,7 @@ function KanbanContent() {
     if (!destination || (source.droppableId === destination.droppableId && source.index === destination.index)) return;
 
     // "Agendados" é ordenado pela data: reordenar à mão não grava nada.
-    if (source.droppableId === "AGENDADO" && destination.droppableId === "AGENDADO") return;
+    if (agendamentoLigado && source.droppableId === "AGENDADO" && destination.droppableId === "AGENDADO") return;
 
     // 1. ATUALIZAÇÃO OTIMISTA IMEDIATA (Evita o card pular de volta)
     const newBoardData = { ...boardData };
@@ -623,7 +636,7 @@ function KanbanContent() {
 
     // 2. LÓGICA DE MODAIS (Mantém o card no destino enquanto aguarda)
     // "Agendados" pede data e hora, de qualquer coluna (substitui o "Mover para trás?").
-    if (destination.droppableId === "AGENDADO") {
+    if (agendamentoLigado && destination.droppableId === "AGENDADO") {
       if (movedLead) abrirAgendamento(movedLead, "mover");
       return;
     }
@@ -777,7 +790,8 @@ function KanbanContent() {
                             {(provided) => {
                               // Tenta encontrar a data de atualização mais recente
                               const lastUpdateDate = lead.updated_at || lead.updatedAt || lead.created_at || lead.createdAt;
-                              const status = getInactivityStatus(lead, col.id);
+                              // Flag desligada: a inatividade ignora agendado_em, como antes da feature.
+                              const status = getInactivityStatus(agendamentoLigado ? lead : { ...lead, agendado_em: undefined }, col.id);
                               
                               return (
                                 <div ref={provided.innerRef} {...provided.draggableProps} {...provided.dragHandleProps} className="bg-white rounded shadow-sm mb-3 hover:shadow-md group relative transition-all w-full overflow-hidden border border-gray-100">
@@ -846,7 +860,7 @@ function KanbanContent() {
                                     </div>
 
                                     {/* Agendamento: só na coluna "Agendados" (blueprint §3) */}
-                                    {col.id === "AGENDADO" && (() => {
+                                    {agendamentoLigado && col.id === "AGENDADO" && (() => {
                                       const agendadoEm: string | undefined = lead.agendado_em;
                                       const futuro = !!agendadoEm && Date.parse(agendadoEm) > Date.now();
                                       // Lembrete por WhatsApp (O7): só agendamento futuro e telefone utilizável; nada de anotações.
@@ -1469,7 +1483,7 @@ function KanbanContent() {
                           destinationId: col.id
                         };
 
-                        if (col.id === "AGENDADO") {
+                        if (agendamentoLigado && col.id === "AGENDADO") {
                           abrirAgendamento(quickMoveLead, "mover");
                         } else if (col.id === "GANHO") {
                           setPendingMove(moveData);

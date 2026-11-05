@@ -39,6 +39,11 @@ vi.mock('@/services/api', async () => {
 vi.mock('@/store/authStore', () => ({ useAuthStore: vi.fn() }));
 vi.mock('@/contexts/TenantContext', () => ({ useTenant: vi.fn() }));
 
+// Flag crm-agendamento (RF-78): os CA-53 a CA-58 rodam ligada (CA-80); o CA-79, desligada.
+// A leitura de /me/flags é testada em src/hooks/useFlag.test.tsx.
+const flag = vi.hoisted(() => ({ ligada: true }));
+vi.mock('@/hooks/useFlag', () => ({ useFlag: (chave: string) => chave === 'crm-agendamento' && flag.ligada }));
+
 // O DragDropContext guarda o onDragEnd que a página passa, para o teste arrastar.
 const dnd = vi.hoisted(() => ({ onDragEnd: null as null | ((r: unknown) => Promise<void> | void) }));
 vi.mock('@hello-pangea/dnd', () => ({
@@ -124,6 +129,7 @@ describe('Quadro: agendamento', () => {
     vi.setSystemTime(new Date('2026-11-10T15:00:00Z'));
     window.alert = vi.fn();
     dnd.onDragEnd = null;
+    flag.ligada = true;
     quadro = { NOVO: [lead({ id: 'l1', nome: 'Maria Silva', status: 'NOVO' })] };
     (useAuthStore as any).mockReturnValue({
       session: { email: 'user@test.com', name: 'User', tenantId: 'tenant-1', role: 'USER' },
@@ -562,6 +568,105 @@ describe('Quadro: agendamento', () => {
       fireEvent.click(screen.getByRole('button', { name: 'Confirmar agendamento' }));
       await waitFor(() => expect(LeadService.agendar).toHaveBeenCalledWith('l1', '2026-11-12T18:30:00Z', 'tenant-1'));
       expect(LeadService.updateStatus).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('CA-79 — flag desligada: o quadro de antes da feature', () => {
+    const coluna = (titulo: string) => screen.getByRole('heading', { name: new RegExp(`^${titulo}`) }).parentElement as HTMLElement;
+    const nomesNaColuna = (titulo: string) =>
+      within(coluna(titulo)).queryAllByText(/^Lead [ABC]$/).map((el) => el.textContent);
+
+    beforeEach(() => {
+      flag.ligada = false;
+    });
+
+    it('arrastar NOVO → AGENDADO não abre o modal e grava pelo updateStatus', async () => {
+      renderKanban();
+      await screen.findByText('Maria Silva');
+      await arrastar('NOVO', 'AGENDADO');
+
+      expect(screen.queryByRole('dialog', { name: 'Agendar horário' })).not.toBeInTheDocument();
+      await waitFor(() => expect(LeadService.updateStatus).toHaveBeenCalledTimes(1));
+      expect((LeadService.updateStatus as any).mock.calls[0].slice(0, 2)).toEqual(['l1', 'AGENDADO']);
+      expect(LeadService.agendar).not.toHaveBeenCalled();
+    });
+
+    it('"Mover lead" → "Agendados" não abre o modal e grava pelo updateStatus', async () => {
+      const user = userEvent.setup();
+      renderKanban();
+      await screen.findByText('Maria Silva');
+
+      await user.click(screen.getByRole('button', { name: 'Mover lead' }));
+      await user.click(screen.getByRole('button', { name: 'Agendados' }));
+
+      expect(screen.queryByRole('dialog', { name: 'Agendar horário' })).not.toBeInTheDocument();
+      await waitFor(() => expect(LeadService.updateStatus).toHaveBeenCalledTimes(1));
+      expect((LeadService.updateStatus as any).mock.calls[0].slice(0, 2)).toEqual(['l1', 'AGENDADO']);
+      expect(LeadService.agendar).not.toHaveBeenCalled();
+    });
+
+    it('o cartão em "Agendados" não mostra data, aviso, botões nem o lembrete', async () => {
+      quadro = {
+        AGENDADO: [
+          lead({ id: 'l1', nome: 'Maria Silva', status: 'AGENDADO', agendado_em: '2026-11-12T18:30:00Z' }),
+          lead({ id: 'l2', nome: 'João Souza', status: 'AGENDADO', agendado_em: '2026-11-09T18:30:00Z' }),
+          lead({ id: 'l3', nome: 'Ana Lima', status: 'AGENDADO' }),
+        ],
+      };
+      renderKanban();
+      await screen.findByText('Maria Silva');
+
+      expect(screen.queryByText(/^Agendado para /)).not.toBeInTheDocument();
+      expect(screen.queryByText('Sem horário marcado')).not.toBeInTheDocument();
+      expect(screen.queryByText('O horário passou: registre o que aconteceu.')).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: 'Alterar horário' })).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: 'Marcar horário' })).not.toBeInTheDocument();
+      expect(screen.queryByRole('link', { name: 'Lembrar pelo WhatsApp' })).not.toBeInTheDocument();
+    });
+
+    it('"Agendados" fica na ordem da API', async () => {
+      quadro = {
+        AGENDADO: [
+          lead({ id: 'a', nome: 'Lead A', status: 'AGENDADO', agendado_em: '2026-11-12T12:00:00Z' }),
+          lead({ id: 'b', nome: 'Lead B', status: 'AGENDADO' }),
+          lead({ id: 'c', nome: 'Lead C', status: 'AGENDADO', agendado_em: '2026-11-09T12:00:00Z' }),
+        ],
+      };
+      renderKanban();
+      await screen.findByText('Lead A');
+      expect(nomesNaColuna('Agendados')).toEqual(['Lead A', 'Lead B', 'Lead C']);
+    });
+
+    it('a inatividade conta só de updated_at, mesmo com horário futuro', async () => {
+      quadro = {
+        AGENDADO: [lead({ id: 'l1', nome: 'Maria Silva', status: 'AGENDADO', updated_at: '2026-11-01T00:00:00Z', agendado_em: '2026-11-11T12:00:00Z' })],
+      };
+      renderKanban();
+      await screen.findByText('Maria Silva');
+      expect(screen.getByText(/^Inatividade crítica/).textContent).toBe(
+        'Inatividade crítica: mais de 231h sem atualizações. Recomendado: Contato urgente.',
+      );
+    });
+
+    it('CA-80: a flag ligando depois da carga reordena "Agendados" pela data', async () => {
+      quadro = {
+        AGENDADO: [
+          lead({ id: 'a', nome: 'Lead A', status: 'AGENDADO', agendado_em: '2026-11-12T12:00:00Z' }),
+          lead({ id: 'b', nome: 'Lead B', status: 'AGENDADO' }),
+          lead({ id: 'c', nome: 'Lead C', status: 'AGENDADO', agendado_em: '2026-11-09T12:00:00Z' }),
+        ],
+      };
+      const { rerender } = renderKanban();
+      await screen.findByText('Lead A');
+      expect(nomesNaColuna('Agendados')).toEqual(['Lead A', 'Lead B', 'Lead C']);
+
+      flag.ligada = true;
+      rerender(
+        <AcessosProvider>
+          <KanbanPage />
+        </AcessosProvider>,
+      );
+      await waitFor(() => expect(nomesNaColuna('Agendados')).toEqual(['Lead C', 'Lead A', 'Lead B']));
     });
   });
 });
