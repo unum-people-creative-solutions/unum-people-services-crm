@@ -7,6 +7,7 @@ import api, { LeadService, TenantService, LeadData, LeadSale, MonthSale, mensage
 import { useAuthStore } from "@/store/authStore";
 import { useTenant } from "@/contexts/TenantContext";
 import { useAcessosDoCRM } from "@/contexts/AcessosContext";
+import { useFlag } from "@/hooks/useFlag";
 import { Plus, X, LogOut, Settings, DollarSign, AlertCircle, Calendar, Eye, EyeOff, Users, Edit2, Mail, Phone, User, Search, TrendingUp, RefreshCw, HelpCircle, Tag, ExternalLink, LayoutGrid, ArrowRightLeft, MessageCircle, Clock, Trash2, AlertTriangle } from "lucide-react";
 import { logoutFromHostedUI } from "@/lib/pkce";
 
@@ -24,6 +25,8 @@ import { PhoneInput } from "@/components/ui/PhoneInput";
 import { CPFInput } from "@/components/ui/CPFInput";
 import { z } from "zod";
 import { StatusAdsDaVenda } from "@/components/StatusAdsDaVenda";
+import { AgendamentoModal } from "@/components/AgendamentoModal";
+import { corDeInatividade, formatarAgendamento, linkDeLembrete, mensagemDeLembrete, ordenarAgendados, referenciaDeInatividade } from "@/lib/agendamento";
 
 type LeadFormValues = z.infer<typeof leadSchema>;
 
@@ -71,8 +74,9 @@ const parseSafeDate = (dateStr: any) => {
   return isNaN(d.getTime()) ? new Date() : d;
 };
 
-// Helper para Inatividade
-const getInactivityStatus = (updatedAt: any, columnId: string) => {
+// Helper para Inatividade: a cor vem da regra única (lib/agendamento, D-AG-7),
+// contada a partir da referência (em "Agendados", o maior entre updated_at e agendado_em).
+const getInactivityStatus = (lead: any, columnId: string) => {
   // Cores (Classes completas para o Tailwind extrair)
   const BLUE = "bg-blue-600";
   const ORANGE = "bg-orange-500";
@@ -80,21 +84,15 @@ const getInactivityStatus = (updatedAt: any, columnId: string) => {
 
   const defaultStatus = { color: BLUE, animate: false, message: "", showTooltip: false };
 
-  if (!["NOVO", "ATENDIMENTO", "AGENDADO"].includes(columnId)) {
-    return defaultStatus;
-  }
-
-  if (!updatedAt) return defaultStatus;
-
-  const lastUpdate = new Date(updatedAt);
   const now = new Date();
-  
-  if (isNaN(lastUpdate.getTime())) return defaultStatus;
+  const cor = corDeInatividade(lead, columnId, now);
+  const referencia = referenciaDeInatividade(lead, columnId);
+  if (cor === "azul" || !referencia) return defaultStatus;
 
-  const diffMs = now.getTime() - lastUpdate.getTime();
+  const diffMs = now.getTime() - referencia.getTime();
   const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
 
-  if (diffHours >= 48) {
+  if (cor === "vermelho") {
     return { 
       color: RED, 
       animate: false, 
@@ -102,16 +100,12 @@ const getInactivityStatus = (updatedAt: any, columnId: string) => {
       showTooltip: true 
     };
   }
-  if (diffHours >= 24) {
-    return { 
-      color: ORANGE, 
-      animate: true, 
-      message: `Atenção: ${diffHours}h de inatividade. Recomendado: Enviar follow-up.`,
-      showTooltip: true 
-    };
-  }
-  
-  return defaultStatus;
+  return { 
+    color: ORANGE, 
+    animate: true, 
+    message: `Atenção: ${diffHours}h de inatividade. Recomendado: Enviar follow-up.`,
+    showTooltip: true 
+  };
 };
 
 function KanbanContent() {
@@ -130,6 +124,12 @@ function KanbanContent() {
   const { carregando: carregandoAcessos, erro: erroAcessos, pode } = useAcessosDoCRM();
   const podeEditar = pode("crm.lead.editar");
   const podeVer = pode("crm.lead.ver");
+
+  // Flag crm-agendamento (spec crm-agendamento-e-lembretes RF-78): desligada, o quadro
+  // é o de antes da feature. O ref deixa o loadLeads ler o valor atual sem recarregar.
+  const agendamentoLigado = useFlag("crm-agendamento");
+  const agendamentoLigadoRef = useRef(agendamentoLigado);
+  agendamentoLigadoRef.current = agendamentoLigado;
 
   // "Acessar CRM" na lista de tenants abre /kanban?tenant_id=<id>. Aplica uma
   // vez por valor, depois que a lista carrega (o switchTenant recusa tenant
@@ -175,6 +175,13 @@ function KanbanContent() {
   // Trava de clique duplo em "Confirmar Venda" (a ref bloqueia reenvios antes do re-render)
   const [isSubmittingSale, setIsSubmittingSale] = useState(false);
   const submittingSaleRef = useRef(false);
+
+  // Agendamento (spec crm-agendamento-e-lembretes RF-53/RF-54): o modal pede data
+  // e hora ao mover para "Agendados" (modo mover) ou ao alterar o horário (modo alterar).
+  const [agendamento, setAgendamento] = useState<{ leadId: string; nome: string; modo: "mover" | "alterar"; valorInicial?: string } | null>(null);
+  const [enviandoAgendamento, setEnviandoAgendamento] = useState(false);
+  const [erroAgendamento, setErroAgendamento] = useState<string | null>(null);
+  const enviandoAgendamentoRef = useRef(false);
 
   // Forms
   const createLeadForm = useForm<LeadFormValues>({
@@ -360,6 +367,8 @@ function KanbanContent() {
         );
         results[status] = data || [];
       }));
+      // "Agendados" pela consulta mais próxima, no estado (os índices do arrastar dependem disso).
+      if (results.AGENDADO && agendamentoLigadoRef.current) results.AGENDADO = ordenarAgendados(results.AGENDADO);
       
       setBoardData((prev: any) => ({ ...prev, ...results }));
     } catch (err) { 
@@ -552,12 +561,60 @@ function KanbanContent() {
     setPendingMove(null);
   };
 
+  // A flag pode ligar depois da carga: a coluna passa a seguir a data.
+  useEffect(() => {
+    if (!agendamentoLigado) return;
+    setBoardData((prev: any) => (prev.AGENDADO ? { ...prev, AGENDADO: ordenarAgendados(prev.AGENDADO) } : prev));
+  }, [agendamentoLigado]);
+
+  // Mover: o horário atual só preenche o modal se ainda for futuro (blueprint §2.1).
+  const abrirAgendamento = (lead: any, modo: "mover" | "alterar") => {
+    const atual: string | undefined = lead?.agendado_em;
+    const futuro = !!atual && Date.parse(atual) > Date.now();
+    setErroAgendamento(null);
+    setAgendamento({
+      leadId: lead.id,
+      nome: lead.nome,
+      modo,
+      valorInicial: modo === "alterar" ? atual : futuro ? atual : undefined,
+    });
+  };
+
+  const confirmarAgendamento = async (iso: string) => {
+    if (!agendamento || enviandoAgendamentoRef.current) return;
+    enviandoAgendamentoRef.current = true;
+    setEnviandoAgendamento(true);
+    setErroAgendamento(null);
+    try {
+      await LeadService.agendar(agendamento.leadId, iso, activeTenantId);
+      setAgendamento(null);
+      loadLeads(true);
+    } catch (err) {
+      console.error(err);
+      setErroAgendamento(mensagemDeErro(err, "Não foi possível salvar o horário. Tente de novo."));
+    } finally {
+      enviandoAgendamentoRef.current = false;
+      setEnviandoAgendamento(false);
+    }
+  };
+
+  // Sem data, o cartão não entra em "Agendados" (O1): cancelar o modo mover devolve o quadro.
+  const cancelarAgendamento = () => {
+    const modo = agendamento?.modo;
+    setAgendamento(null);
+    setErroAgendamento(null);
+    if (modo === "mover") loadLeads(true);
+  };
+
   const onDragEnd = async (result: any) => {
     if (!podeEditar) return;
     const { source, destination, draggableId } = result;
     
     // Se não mudou de lugar, não faz nada
     if (!destination || (source.droppableId === destination.droppableId && source.index === destination.index)) return;
+
+    // "Agendados" é ordenado pela data: reordenar à mão não grava nada.
+    if (agendamentoLigado && source.droppableId === "AGENDADO" && destination.droppableId === "AGENDADO") return;
 
     // 1. ATUALIZAÇÃO OTIMISTA IMEDIATA (Evita o card pular de volta)
     const newBoardData = { ...boardData };
@@ -578,6 +635,12 @@ function KanbanContent() {
     const destColDef = COLUMNS.find(c => c.id === destination.droppableId);
 
     // 2. LÓGICA DE MODAIS (Mantém o card no destino enquanto aguarda)
+    // "Agendados" pede data e hora, de qualquer coluna (substitui o "Mover para trás?").
+    if (agendamentoLigado && destination.droppableId === "AGENDADO") {
+      if (movedLead) abrirAgendamento(movedLead, "mover");
+      return;
+    }
+
     if (destination.droppableId === "GANHO") {
       setPendingMove({ draggableId, sourceId: source.droppableId, destinationId: destination.droppableId, sourceIndex: source.index, destinationIndex: destination.index });
       setIsSaleModalOpen(true);
@@ -727,7 +790,8 @@ function KanbanContent() {
                             {(provided) => {
                               // Tenta encontrar a data de atualização mais recente
                               const lastUpdateDate = lead.updated_at || lead.updatedAt || lead.created_at || lead.createdAt;
-                              const status = getInactivityStatus(lastUpdateDate, col.id);
+                              // Flag desligada: a inatividade ignora agendado_em, como antes da feature.
+                              const status = getInactivityStatus(agendamentoLigado ? lead : { ...lead, agendado_em: undefined }, col.id);
                               
                               return (
                                 <div ref={provided.innerRef} {...provided.draggableProps} {...provided.dragHandleProps} className="bg-white rounded shadow-sm mb-3 hover:shadow-md group relative transition-all w-full overflow-hidden border border-gray-100">
@@ -794,6 +858,57 @@ function KanbanContent() {
                                         )}
                                       </div>
                                     </div>
+
+                                    {/* Agendamento: só na coluna "Agendados" (blueprint §3) */}
+                                    {agendamentoLigado && col.id === "AGENDADO" && (() => {
+                                      const agendadoEm: string | undefined = lead.agendado_em;
+                                      const futuro = !!agendadoEm && Date.parse(agendadoEm) > Date.now();
+                                      // Lembrete por WhatsApp (O7): só agendamento futuro e telefone utilizável; nada de anotações.
+                                      const lembrete = futuro && agendadoEm
+                                        ? linkDeLembrete(lead.telefone || "", mensagemDeLembrete({ nome: lead.nome || "", negocio: activeTenantName || "", iso: agendadoEm }))
+                                        : null;
+                                      return (
+                                        <div className="mt-2 flex flex-col gap-1">
+                                          {agendadoEm ? (
+                                            <p id={`agendamento-${lead.id}`} className="text-xs font-bold tracking-tight text-brand-blue flex items-center gap-0.5">
+                                              <Calendar size={12} className="shrink-0" aria-hidden="true" />{`Agendado para ${formatarAgendamento(agendadoEm)}`}
+                                            </p>
+                                          ) : (
+                                            <p className="text-xs text-gray-500">Sem horário marcado</p>
+                                          )}
+                                          {agendadoEm && !futuro && (
+                                            <p role="status" className="bg-amber-50 border border-amber-200 text-amber-800 text-[11px] font-bold rounded px-2 py-1 flex items-start gap-1">
+                                              <AlertTriangle size={12} className="shrink-0 mt-px" aria-hidden="true" />O horário passou: registre o que aconteceu.
+                                            </p>
+                                          )}
+                                          {(podeEditar || lembrete) && (
+                                            <div className="flex flex-wrap gap-x-3 gap-y-1">
+                                              {podeEditar && (
+                                              <button
+                                                type="button"
+                                                onClick={(e) => { e.stopPropagation(); abrirAgendamento(lead, "alterar"); }}
+                                                className="text-[11px] font-bold text-brand-blue hover:underline rounded focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-blue"
+                                              >
+                                                {agendadoEm ? "Alterar horário" : "Marcar horário"}
+                                              </button>
+                                              )}
+                                              {lembrete && (
+                                                <a
+                                                  href={lembrete}
+                                                  target="_blank"
+                                                  rel="noopener noreferrer"
+                                                  aria-describedby={`agendamento-${lead.id}`}
+                                                  onClick={(e) => e.stopPropagation()}
+                                                  className="text-[11px] font-bold text-green-700 hover:bg-green-50 rounded flex items-center gap-1 focus:outline-none focus-visible:ring-2 focus-visible:ring-green-700"
+                                                >
+                                                  <MessageCircle size={12} className="shrink-0" aria-hidden="true" />Lembrar pelo WhatsApp
+                                                </a>
+                                              )}
+                                            </div>
+                                          )}
+                                        </div>
+                                      );
+                                    })()}
 
                                     {monthTotal > 0 && (
                                       <div className="text-xs font-black text-green-600 mt-2">
@@ -1307,6 +1422,17 @@ function KanbanContent() {
         )}
       </AnimatePresence>
 
+      <AgendamentoModal
+        aberto={!!agendamento}
+        modo={agendamento?.modo ?? "mover"}
+        nomeDoLead={agendamento?.nome ?? ""}
+        valorInicial={agendamento?.valorInicial}
+        enviando={enviandoAgendamento}
+        erro={erroAgendamento}
+        onConfirmar={confirmarAgendamento}
+        onCancelar={cancelarAgendamento}
+      />
+
       {/* Quick Move Modal (Bottom Sheet) */}
       <AnimatePresence>
         {isQuickMoveModalOpen && quickMoveLead && (
@@ -1357,7 +1483,9 @@ function KanbanContent() {
                           destinationId: col.id
                         };
 
-                        if (col.id === "GANHO") {
+                        if (agendamentoLigado && col.id === "AGENDADO") {
+                          abrirAgendamento(quickMoveLead, "mover");
+                        } else if (col.id === "GANHO") {
                           setPendingMove(moveData);
                           setIsSaleModalOpen(true);
                         } else if (destColDef.order < (sourceColDef?.order || 0)) {
