@@ -241,7 +241,15 @@ export const AcessosService = {
   },
 };
 
-export const MENSAGEM_SEM_PERMISSAO = 'Você não tem permissão para fazer isso nesta empresa.';
+// Feature flags avaliadas pela API para a empresa ativa (modo-teste-fase3; crm-agendamento-e-lembretes RF-76).
+export const FlagsService = {
+  get: async (tenantId: string): Promise<Record<string, boolean>> => {
+    const response = await api.get(`/me/flags?tenant_id=${encodeURIComponent(tenantId)}`);
+    return response.data.flags;
+  },
+};
+
+export const MENSAGEM_SEM_PERMISSAO ='Você não tem permissão para fazer isso nesta empresa.';
 
 // 403 com data.permissao preenchida usa a mensagem fixa; o resto mantém o texto padrão.
 export function mensagemDeErro(err: unknown, padrao: string): string {
