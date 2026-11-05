@@ -39,6 +39,9 @@ vi.mock('@/contexts/TenantContext', () => ({ useTenant: vi.fn() }));
 
 // O Draggable guarda o isDragDisabled que recebe, para o teste ler.
 const arrastes = vi.hoisted(() => ({ desligado: [] as boolean[] }));
+// Flag crm-agendamento desligada: estes testes cobrem o quadro sem agendamento (RF-78).
+vi.mock('@/hooks/useFlag', () => ({ useFlag: () => false }));
+
 vi.mock('@hello-pangea/dnd', () => ({
   DragDropContext: ({ children }: any) => <div>{children}</div>,
   Droppable: ({ children }: any) => children({ draggableProps: {}, innerRef: vi.fn(), droppableProps: {} }, {}),

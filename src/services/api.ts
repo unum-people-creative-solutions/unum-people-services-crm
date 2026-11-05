@@ -75,6 +75,12 @@ export interface MonthSale {
   data: string;
 }
 
+// Agendamento do lead (spec crm-agendamento-e-lembretes, RF-51/RNF-07): string
+// RFC3339 UTC como a API devolve (tag json agendado_em de domain.Lead, omitzero).
+export interface LeadAgendamento {
+  agendado_em?: string;
+}
+
 export const LeadService = {
   list: async (status: string, startDate?: string, endDate?: string, tenantId?: string) => {
     const params = new URLSearchParams({ status });
@@ -106,6 +112,16 @@ export const LeadService = {
       url += `?tenant_id=${encodeURIComponent(tenantId)}`;
     }
     const response = await api.put(url, { status, valor_venda: valor, data_venda: dataVenda });
+    return response.data;
+  },
+  // Move para "Agendados" ou altera o horário: PUT /leads/{id} com corpo exatamente
+  // {"status":"AGENDADO","agendado_em":<RFC3339 UTC>} (TECH-DESIGN §5.1/§5.7).
+  agendar: async (id: string, agendadoEm: string, tenantId?: string) => {
+    let url = `/leads/${id}`;
+    if (tenantId) {
+      url += `?tenant_id=${encodeURIComponent(tenantId)}`;
+    }
+    const response = await api.put(url, { status: 'AGENDADO', agendado_em: agendadoEm });
     return response.data;
   },
   update: async (id: string, data: { nome: string; email?: string; telefone: string; cpf?: string; data_nascimento?: string; origem?: string; anotacoes?: string }, tenantId?: string) => {
@@ -222,6 +238,14 @@ export const AcessosService = {
   get: async (tenantId: string): Promise<MeusAcessos> => {
     const response = await api.get(`/me/acessos?tenant_id=${encodeURIComponent(tenantId)}`);
     return response.data;
+  },
+};
+
+// Feature flags avaliadas pela API para a empresa ativa (modo-teste-fase3; crm-agendamento-e-lembretes RF-76).
+export const FlagsService = {
+  get: async (tenantId: string): Promise<Record<string, boolean>> => {
+    const response = await api.get(`/me/flags?tenant_id=${encodeURIComponent(tenantId)}`);
+    return response.data.flags;
   },
 };
 

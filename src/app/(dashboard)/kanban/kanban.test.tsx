@@ -42,6 +42,9 @@ vi.mock('@/contexts/TenantContext', () => ({
   useTenant: vi.fn(),
 }));
 
+// Flag crm-agendamento desligada: estes testes cobrem o quadro sem agendamento (RF-78).
+vi.mock('@/hooks/useFlag', () => ({ useFlag: () => false }));
+
 vi.mock('@hello-pangea/dnd', () => ({
   DragDropContext: ({ children }: any) => <div>{children}</div>,
   Droppable: ({ children }: any) => children({ draggableProps: {}, innerRef: vi.fn(), droppableProps: {} }, {}),
