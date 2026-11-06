@@ -6,6 +6,7 @@ import { AcessosProvider } from '@/contexts/AcessosContext';
 import { useAuthStore } from '@/store/authStore';
 import { useTenant } from '@/contexts/TenantContext';
 import conectada from '@/services/__fixtures__/google-agenda-conectada.json';
+import naoConectada from '@/services/__fixtures__/google-agenda-nao-conectada.json';
 import leadDoGet from '@/services/__fixtures__/get-leads-lead-google-agenda.json';
 import putOk from '@/services/__fixtures__/put-lead-google-agenda-ok.json';
 import putFalhou from '@/services/__fixtures__/put-lead-google-agenda-falhou.json';
@@ -43,6 +44,7 @@ vi.mock('xlsx', () => ({
 const ID = leadDoGet.id;
 const LINK = leadDoGet.google_evento_link;
 const GESTOR = ['crm.lead.ver', 'crm.lead.criar', 'crm.lead.editar', 'crm.lead.excluir', 'crm.integracoes.gerir'];
+const VENDEDOR = ['crm.lead.ver', 'crm.lead.criar', 'crm.lead.editar', 'crm.lead.excluir'];
 
 function acessos(crm: string[]): MeusAcessos {
   return {
@@ -61,17 +63,19 @@ let chamadas: string[] = [];
 let corposPut: unknown[] = [];
 let respostaPut: () => Promise<unknown>;
 let respostaPost: () => Promise<unknown>;
+let permissoes: string[] = GESTOR;
+let integracao: unknown = conectada;
 
 function rotear() {
   vi.spyOn(api, 'get').mockImplementation(async (url: string) => {
     chamadas.push(`GET ${url}`);
-    if (url.startsWith('/me/acessos')) return { data: acessos(GESTOR) };
+    if (url.startsWith('/me/acessos')) return { data: acessos(permissoes) };
     if (url.startsWith('/leads?view=sales')) return { data: [] };
     if (url.startsWith('/leads?')) {
       const status = new URLSearchParams(url.split('?')[1]).get('status') as string;
       return { data: quadro[status] ?? [] };
     }
-    if (url === '/integracoes/google-agenda?tenant_id=tenant-1') return { data: conectada };
+    if (url === '/integracoes/google-agenda?tenant_id=tenant-1') return { data: integracao };
     if (url.startsWith('/integracoes/google-agenda/ocupado?')) return { data: { ocupado: [] } };
     throw new Error(`GET inesperado: ${url}`);
   });
@@ -114,6 +118,8 @@ describe('Quadro: Google Agenda', () => {
     chamadas = [];
     corposPut = [];
     quadro = { AGENDADO: [leadDoGet] };
+    permissoes = GESTOR;
+    integracao = conectada;
     respostaPut = async () => ({ data: { message: 'Lead updated successfully' } });
     respostaPost = async () => ({ data: { google_agenda: putOk.google_agenda } });
     (useAuthStore as any).mockReturnValue({
@@ -311,6 +317,40 @@ describe('Quadro: Google Agenda', () => {
       await agendarNovo();
       await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Agendar horário' })).not.toBeInTheDocument());
       expect(screen.queryByText('Agendado no CRM, mas não foi possível pôr na sua agenda.')).not.toBeInTheDocument();
+    });
+  });
+
+  // CA-24 (RF-23) no quadro: é o quadro que calcula quem pode conectar
+  // (GlobalAdmin ou crm.integracoes.gerir) e passa ao modal.
+  describe('CA-24 — atalho "Conectar o Google Agenda" com a integração não conectada', () => {
+    const TEXTO_ATALHO = 'Conecte o Google Agenda para o horário ir direto para a sua agenda.';
+
+    async function abrirModalNaoConectada() {
+      integracao = naoConectada;
+      quadro = { NOVO: [{ ...leadSemEvento, status: 'NOVO', agendado_em: undefined }] };
+      renderKanban();
+      await screen.findByText('Maria Clara Souza');
+      await arrastar('NOVO', 'AGENDADO');
+      expect(screen.getByRole('dialog', { name: 'Agendar horário' })).toBeInTheDocument();
+      await waitFor(() => expect(chamadas).toContain('GET /integracoes/google-agenda?tenant_id=tenant-1'));
+      await act(async () => {});
+    }
+
+    it('Gestor (crm.integracoes.gerir) vê o texto e o link para a aba', async () => {
+      permissoes = GESTOR;
+      await abrirModalNaoConectada();
+
+      const link = await screen.findByRole('link', { name: 'Conectar o Google Agenda' });
+      expect(link).toHaveAttribute('href', '/settings?aba=google-agenda');
+      expect(screen.getByText((_, el) => el?.tagName === 'P' && el.textContent === `${TEXTO_ATALHO} Conectar o Google Agenda`)).toBeInTheDocument();
+    });
+
+    it('Vendedor (sem crm.integracoes.gerir) não vê o atalho', async () => {
+      permissoes = VENDEDOR;
+      await abrirModalNaoConectada();
+
+      expect(screen.queryByRole('link', { name: 'Conectar o Google Agenda' })).not.toBeInTheDocument();
+      expect(screen.queryByText((_, el) => el?.tagName === 'P' && (el.textContent ?? '').startsWith(TEXTO_ATALHO))).not.toBeInTheDocument();
     });
   });
 
