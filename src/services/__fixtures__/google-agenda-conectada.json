@@ -1,0 +1,10 @@
+{
+  "agenda_id": "primary",
+  "agenda_nome": "consultorio@gmail.com",
+  "conectada": true,
+  "conflito": true,
+  "duracao_padrao_min": 50,
+  "email": "consultorio@gmail.com",
+  "lista_agendas": true,
+  "situacao": "ativa"
+}
