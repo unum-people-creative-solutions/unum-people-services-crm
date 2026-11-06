@@ -453,6 +453,19 @@ function KanbanContent() {
     setIsEditModalOpen(true);
   };
 
+  // crm-google-agenda RF-27: /kanban?lead=<id> abre o lead no modal do cartão, depois de
+  // carregar o quadro. Só procura nos leads já carregados do tenant ativo; não achou, nada.
+  const leadPedido = searchParams.get("lead");
+  const [leadPedidoTratado, setLeadPedidoTratado] = useState<string | null>(null);
+  const abrirLeadRef = useRef(handleEditClick);
+  abrirLeadRef.current = handleEditClick;
+  useEffect(() => {
+    if (!leadPedido || loading || leadPedidoTratado === leadPedido) return;
+    setLeadPedidoTratado(leadPedido);
+    const lead = (Object.values(boardData).flat() as any[]).find((l) => l?.id === leadPedido);
+    if (lead) abrirLeadRef.current(lead);
+  }, [leadPedido, loading, leadPedidoTratado, boardData]);
+
   const handleUpdateLead = async (data: LeadFormValues) => {
     if (!editingLeadId) return;
     try {
