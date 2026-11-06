@@ -1,13 +1,15 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useAuthStore } from "@/store/authStore";
-import { Megaphone, Shield, User, Users } from "lucide-react";
+import { CalendarDays, Megaphone, Shield, User, Users } from "lucide-react";
 import Navbar from "@/components/Navbar";
 import TabMyAccount from "./_components/TabMyAccount";
 import TabTeam from "./_components/TabTeam";
 import TabGoogleAds from "./_components/TabGoogleAds";
+import TabGoogleAgenda from "./_components/TabGoogleAgenda";
 import { useAcessosDoCRM } from "@/contexts/AcessosContext";
+import { useFlag } from "@/hooks/useFlag";
 
 export default function SettingsPage() {
   const { session } = useAuthStore();
@@ -17,6 +19,15 @@ export default function SettingsPage() {
   const podeVerEquipe = session?.role === "GlobalAdmin" || podeNoPortal("portal.usuarios.gerir");
   // A conexão do Google Ads fica nesta aba, para quem gere integrações ou é GlobalAdmin.
   const podeVerGoogleAds = session?.role === "GlobalAdmin" || pode("crm.integracoes.gerir");
+  // crm-google-agenda RF-19/RF-28: mesma regra do Google Ads, com crm-google-agenda e crm-agendamento ligadas.
+  const googleAgendaLigada = useFlag("crm-google-agenda");
+  const agendamentoLigado = useFlag("crm-agendamento");
+  const podeVerGoogleAgenda = podeVerGoogleAds && googleAgendaLigada && agendamentoLigado;
+
+  // RF-21: o retorno do consentimento abre /settings?aba=google-agenda.
+  useEffect(() => {
+    if (new URLSearchParams(window.location.search).get("aba") === "google-agenda") setActiveTab("google-agenda");
+  }, []);
 
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col text-gray-900">
@@ -83,6 +94,21 @@ export default function SettingsPage() {
               <Megaphone size={18} /> Google Ads
             </button>
           )}
+
+          {podeVerGoogleAgenda && (
+            <button
+              role="tab"
+              aria-selected={activeTab === "google-agenda"}
+              onClick={() => setActiveTab("google-agenda")}
+              className={`flex items-center gap-2 px-4 py-3 font-bold text-sm border-b-2 transition-colors whitespace-nowrap ${
+                activeTab === "google-agenda"
+                  ? "border-brand-blue text-brand-blue"
+                  : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
+              }`}
+            >
+              <CalendarDays size={18} /> Google Agenda
+            </button>
+          )}
         </div>
 
         {/* Tab Content */}
@@ -90,6 +116,7 @@ export default function SettingsPage() {
           {activeTab === "my-account" && <TabMyAccount />}
           {activeTab === "team" && podeVerEquipe && <TabTeam />}
           {activeTab === "google-ads" && podeVerGoogleAds && <TabGoogleAds />}
+          {activeTab === "google-agenda" && podeVerGoogleAgenda && <TabGoogleAgenda />}
         </div>
       </main>
     </div>

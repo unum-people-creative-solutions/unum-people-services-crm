@@ -41,6 +41,10 @@ vi.mock('@/contexts/TenantContext', () => ({
   useTenant: vi.fn(),
 }));
 
+// As flags da aba Google Agenda ficam desligadas aqui (sem chamada real a /me/flags);
+// a aba é testada em settings.google-agenda.test.tsx.
+vi.mock('@/hooks/useFlag', () => ({ useFlag: () => false }));
+
 const podeNoPortal = vi.hoisted(() => vi.fn());
 const podeNoCRM = vi.hoisted(() => vi.fn());
 const leitura = vi.hoisted(() => ({ erro: false }));
