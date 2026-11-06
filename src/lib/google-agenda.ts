@@ -5,6 +5,8 @@
 
 export const CHAVE_CONEXAO_GOOGLE_AGENDA = 'google_agenda_oauth';
 export const CAMINHO_RETORNO_GOOGLE_AGENDA = '/settings/google-agenda/callback';
+// Configurações já na aba "Google Agenda" (retorno do RF-21 e atalho do RF-23).
+export const URL_ABA_GOOGLE_AGENDA = '/settings?aba=google-agenda';
 
 const ESCOPOS = [
   'openid',

@@ -16,6 +16,7 @@ import { metadata as acessoNegado } from './acesso-negado/layout'
 import { metadata as auth } from './auth/layout'
 import { metadata as login } from './login/page'
 import { metadata as adsCallback } from './settings/ads/layout'
+import { metadata as googleAgendaCallback } from './settings/google-agenda/layout'
 
 const NAO_INDEXAR = { index: false, follow: false }
 
@@ -27,6 +28,7 @@ describe('indexação das áreas logadas do CRM', () => {
     ['/auth', auth],
     ['/login', login],
     ['/settings/ads/callback (fora do grupo dashboard)', adsCallback],
+    ['/settings/google-agenda/callback (fora do grupo dashboard)', googleAgendaCallback],
   ] as [string, Metadata][])('%s pede para não indexar', (_rota, metadados) => {
     expect(metadados.robots).toEqual(NAO_INDEXAR)
   })
