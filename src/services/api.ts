@@ -349,7 +349,7 @@ export const GoogleAgendaService = {
   },
 };
 
-export const MENSAGEM_SEM_PERMISSAO ='Você não tem permissão para fazer isso nesta empresa.';
+export const MENSAGEM_SEM_PERMISSAO = 'Você não tem permissão para fazer isso nesta empresa.';
 
 // 403 com data.permissao preenchida usa a mensagem fixa; o resto mantém o texto padrão.
 export function mensagemDeErro(err: unknown, padrao: string): string {
