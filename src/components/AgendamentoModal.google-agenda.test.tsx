@@ -1,7 +1,8 @@
 import { render, screen, fireEvent, act } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { AgendamentoModal } from './AgendamentoModal';
-import api, { type SituacaoGoogleAgenda } from '@/services/api';
+import api from '@/services/api';
+import naoConectada from '@/services/__fixtures__/google-agenda-nao-conectada.json';
 import conectada from '@/services/__fixtures__/google-agenda-conectada.json';
 import caida from '@/services/__fixtures__/google-agenda-caida.json';
 import ocupado from '@/services/__fixtures__/google-agenda-ocupado.json';
@@ -11,9 +12,6 @@ import ocupado from '@/services/__fixtures__/google-agenda-ocupado.json';
 // da API (fixtures do teste com DynamoDB Local).
 
 type Props = Parameters<typeof AgendamentoModal>[0];
-
-// Fixture-gap: o teste da API não grava o GET sem item; {conectada:false} é a forma do RF-02.
-const NAO_CONECTADA: SituacaoGoogleAgenda = { conectada: false };
 
 const TEXTO_ATALHO = 'Conecte o Google Agenda para o horário ir direto para a sua agenda.';
 const TEXTO_CAIDA = 'A conexão com o Google Agenda caiu. Reconecte em Configurações.';
@@ -206,7 +204,7 @@ describe('AgendamentoModal com o Google Agenda', () => {
 
   describe('integração não conectada ou caída (RF-23)', () => {
     it('não conectada, quem gere integrações: o atalho com o link para a aba', async () => {
-      situacao = NAO_CONECTADA;
+      situacao = naoConectada;
       const props = montar({}, { podeConectar: true });
       await carregar();
       expect(screen.getByText(TEXTO_ATALHO)).toBeInTheDocument();
@@ -220,7 +218,7 @@ describe('AgendamentoModal com o Google Agenda', () => {
     });
 
     it('não conectada, Vendedor: nada novo', async () => {
-      situacao = NAO_CONECTADA;
+      situacao = naoConectada;
       montar({}, { podeConectar: false });
       await carregar();
       expect(screen.queryByText(TEXTO_ATALHO)).not.toBeInTheDocument();

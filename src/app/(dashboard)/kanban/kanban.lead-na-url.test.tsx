@@ -6,6 +6,7 @@ import { AcessosProvider } from '@/contexts/AcessosContext';
 import { useAuthStore } from '@/store/authStore';
 import { useTenant } from '@/contexts/TenantContext';
 import leadDoGet from '@/services/__fixtures__/get-leads-lead-google-agenda.json';
+import naoConectada from '@/services/__fixtures__/google-agenda-nao-conectada.json';
 
 // crm-google-agenda RF-27 / CA-27: /kanban?lead=<id> abre o lead no mesmo modal que o
 // clique no cartão abre, procurando só nos leads já carregados do tenant ativo.
@@ -69,7 +70,7 @@ describe('/kanban?lead=<id>', () => {
       if (url.startsWith('/me/acessos')) return { data: ACESSOS };
       if (url.startsWith('/leads?view=sales')) return { data: [] };
       if (url.startsWith('/leads?')) return { data: quadro[new URLSearchParams(url.split('?')[1]).get('status') as string] ?? [] };
-      if (url.startsWith('/integracoes/google-agenda')) return { data: { conectada: false } };
+      if (url.startsWith('/integracoes/google-agenda')) return { data: naoConectada };
       throw new Error(`GET inesperado: ${url}`);
     });
   });

@@ -20,7 +20,8 @@ const botaoPrincipal =
 const botaoSecundario =
   "inline-flex items-center gap-2 px-4 py-2.5 rounded-lg bg-gray-100 text-gray-700 text-sm font-bold disabled:opacity-50 disabled:cursor-not-allowed";
 
-// O RF-01 grava agenda_id "primary"; o RF-03 devolve a principal com o id real dela.
+// O item pode guardar "primary" (sem a lista ao conectar, ou conexão antiga); o RF-03
+// devolve a principal com o id real dela, que é o que vai no "Salvar" (RF-19a).
 function agendaEscolhida(conexao: ConexaoGoogleAgenda, lista: AgendaGoogle[]): string {
   if (lista.some((a) => a.id === conexao.agenda_id)) return conexao.agenda_id;
   if (conexao.agenda_id === "primary") return lista.find((a) => a.principal)?.id ?? conexao.agenda_id;

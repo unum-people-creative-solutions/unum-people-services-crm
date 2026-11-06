@@ -3,19 +3,21 @@ import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import TabGoogleAgenda from './TabGoogleAgenda';
 import { useTenant } from '@/contexts/TenantContext';
-import api, { type SituacaoGoogleAgenda } from '@/services/api';
+import api from '@/services/api';
+import naoConectada from '@/services/__fixtures__/google-agenda-nao-conectada.json';
 import conectada from '@/services/__fixtures__/google-agenda-conectada.json';
 import caida from '@/services/__fixtures__/google-agenda-caida.json';
 import agendas from '@/services/__fixtures__/google-agenda-agendas.json';
 
 // crm-google-agenda RF-19 / CA-21: os três estados com os textos literais, com o JSON
-// real da API (fixtures do teste com DynamoDB Local). As chamadas passam pelo
-// GoogleAgendaService de verdade; só o axios responde, por URL.
+// real da API (fixtures do teste com DynamoDB Local, inclusive a "não conectada"). As
+// chamadas passam pelo GoogleAgendaService de verdade; só o axios responde, por URL.
 vi.mock('@/contexts/TenantContext', () => ({ useTenant: vi.fn() }));
 
-// Fixture-gap: o teste da API não grava o GET sem item. {conectada:false} é a forma
-// do RF-02 e do README da API (SituacaoGoogleAgenda sem a conexão, Go).
-const NAO_CONECTADA: SituacaoGoogleAgenda = { conectada: false };
+// RF-19a: os três erros da aba.
+const ERRO_CARREGAR = 'Não foi possível carregar o Google Agenda. Recarregue a página para tentar de novo.';
+const ERRO_AGENDAS = 'Não foi possível carregar as suas agendas. Recarregue a página para tentar de novo.';
+const ERRO_DESCONECTAR = 'Não foi possível desconectar. Tente de novo.';
 
 const TEXTO_CONECTAR = 'Os horários marcados no CRM vão para a sua agenda do Google, e o CRM avisa quando o horário já está ocupado.';
 const TEXTO_SEM_CONFLITO = 'Sem permissão para ver horários ocupados: o CRM não vai avisar conflitos. Reconecte e permita ver a disponibilidade.';
@@ -56,7 +58,7 @@ describe('TabGoogleAgenda', () => {
   });
 
   it('não conectada: título, texto e "Conectar Google Agenda" leva ao consentimento com state guardado', async () => {
-    situacao = NAO_CONECTADA;
+    situacao = naoConectada;
     render(<TabGoogleAgenda />);
 
     expect(await screen.findByRole('heading', { level: 2, name: 'Google Agenda' })).toBeInTheDocument();
@@ -72,13 +74,13 @@ describe('TabGoogleAgenda', () => {
     expect(get).toHaveBeenCalledTimes(1);
   });
 
-  it('conectada: e-mail, seletor com as agendas (a principal no lugar de "primary"), duração, Salvar e Desconectar', async () => {
+  it('conectada: e-mail, seletor com as agendas, duração, Salvar e Desconectar', async () => {
     render(<TabGoogleAgenda />);
 
     expect(await screen.findByText('Conectada como consultorio@gmail.com')).toBeInTheDocument();
     const seletor = screen.getByRole('combobox', { name: 'Agenda' });
     await waitFor(() => expect(within(seletor).getAllByRole('option').map((o) => o.textContent)).toEqual(['consultorio@gmail.com', 'Atendimentos']));
-    // agenda_id "primary" é a principal da lista (o RF-03 devolve o id real dela).
+    // A fixture guarda o id real da principal (RF-01 da rodada 1).
     expect(seletor).toHaveValue('consultorio@gmail.com');
     expect(screen.getByRole('spinbutton', { name: 'Duração padrão da consulta (min)' })).toHaveValue(50);
     expect(screen.getByRole('button', { name: 'Salvar' })).toBeEnabled();
@@ -123,6 +125,57 @@ describe('TabGoogleAgenda', () => {
       '/integracoes/google-agenda?tenant_id=tenant-A',
       { agenda_id: 'y@group.calendar.google.com', duracao_padrao_min: 45 },
     ]);
+  });
+
+  // CA-21a (RF-19a): item em "primary" (conexão antiga ou sem lista) e a lista com a
+  // principal de id real: "Salvar" sem mexer no seletor envia o id real.
+  it('item em "primary": "Salvar" sem mexer no seletor envia o id real da principal', async () => {
+    situacao = { ...conectada, agenda_id: 'primary' };
+    render(<TabGoogleAgenda />);
+    const seletor = await screen.findByRole('combobox', { name: 'Agenda' });
+    await waitFor(() => expect(within(seletor).getAllByRole('option')).toHaveLength(2));
+
+    await userEvent.click(screen.getByRole('button', { name: 'Salvar' }));
+
+    expect(await screen.findByText('Salvo.')).toBeInTheDocument();
+    expect(put.mock.calls).toEqual([
+      ['/integracoes/google-agenda?tenant_id=tenant-A', { agenda_id: 'consultorio@gmail.com', duracao_padrao_min: 50 }],
+    ]);
+  });
+
+  it('falha ao ler a integração mostra o erro da aba (RF-19a)', async () => {
+    get.mockImplementation(async (url: string) => {
+      if (url === '/integracoes/google-agenda?tenant_id=tenant-A') throw { response: { status: 500, data: { error: 'erro_interno' } } };
+      throw new Error(`GET inesperado: ${url}`);
+    });
+    render(<TabGoogleAgenda />);
+
+    expect((await screen.findByRole('alert')).textContent).toBe(ERRO_CARREGAR);
+    expect(screen.queryByRole('button', { name: 'Conectar Google Agenda' })).not.toBeInTheDocument();
+  });
+
+  it('falha ao listar as agendas mostra o erro da aba (RF-19a)', async () => {
+    get.mockImplementation(async (url: string) => {
+      if (url === '/integracoes/google-agenda?tenant_id=tenant-A') return { data: conectada };
+      if (url === '/integracoes/google-agenda/agendas?tenant_id=tenant-A') throw { response: { status: 502, data: { error: 'google_indisponivel' } } };
+      throw new Error(`GET inesperado: ${url}`);
+    });
+    render(<TabGoogleAgenda />);
+
+    expect((await screen.findByRole('alert')).textContent).toBe(ERRO_AGENDAS);
+    expect(screen.getByText('Conectada como consultorio@gmail.com')).toBeInTheDocument();
+  });
+
+  it('falha ao desconectar mostra o erro na confirmação (RF-19a)', async () => {
+    del.mockRejectedValue({ response: { status: 500, data: { error: 'erro_interno' } } });
+    render(<TabGoogleAgenda />);
+    await userEvent.click(await screen.findByRole('button', { name: 'Desconectar' }));
+    const dialogo = screen.getByRole('dialog');
+    await userEvent.click(within(dialogo).getByRole('button', { name: 'Desconectar' }));
+
+    expect((await within(dialogo).findByRole('alert')).textContent).toBe(ERRO_DESCONECTAR);
+    expect(del).toHaveBeenCalledTimes(1);
+    expect(screen.queryByRole('button', { name: 'Conectar Google Agenda' })).not.toBeInTheDocument();
   });
 
   it('erro ao salvar aparece na tela', async () => {
