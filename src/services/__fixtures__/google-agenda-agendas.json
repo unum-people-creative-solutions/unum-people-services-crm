@@ -1,0 +1,12 @@
+[
+  {
+    "id": "consultorio@gmail.com",
+    "nome": "consultorio@gmail.com",
+    "principal": true
+  },
+  {
+    "id": "y@group.calendar.google.com",
+    "nome": "Atendimentos",
+    "principal": false
+  }
+]
