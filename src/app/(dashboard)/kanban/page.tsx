@@ -3,7 +3,7 @@
 import { useEffect, useState, useRef, Suspense, useCallback } from "react";
 import { useSearchParams } from "next/navigation";
 import { DragDropContext, Droppable, Draggable } from "@hello-pangea/dnd";
-import api, { LeadService, TenantService, LeadData, LeadSale, MonthSale, mensagemDeErro } from "@/services/api";
+import api, { LeadService, TenantService, LeadData, LeadSale, MonthSale, mensagemDeErro, GoogleAgendaService, type AgendamentoNoGoogle } from "@/services/api";
 import { useAuthStore } from "@/store/authStore";
 import { useTenant } from "@/contexts/TenantContext";
 import { useAcessosDoCRM } from "@/contexts/AcessosContext";
@@ -130,6 +130,10 @@ function KanbanContent() {
   const agendamentoLigado = useFlag("crm-agendamento");
   const agendamentoLigadoRef = useRef(agendamentoLigado);
   agendamentoLigadoRef.current = agendamentoLigado;
+  // Google Agenda (spec crm-google-agenda RF-28): só com crm-google-agenda e crm-agendamento ligadas.
+  const googleAgendaFlag = useFlag("crm-google-agenda");
+  const googleAgendaLigada = agendamentoLigado && googleAgendaFlag;
+  const podeConectarGoogleAgenda = session?.role === "GlobalAdmin" || pode("crm.integracoes.gerir");
 
   // "Acessar CRM" na lista de tenants abre /kanban?tenant_id=<id>. Aplica uma
   // vez por valor, depois que a lista carrega (o switchTenant recusa tenant
@@ -178,10 +182,16 @@ function KanbanContent() {
 
   // Agendamento (spec crm-agendamento-e-lembretes RF-53/RF-54): o modal pede data
   // e hora ao mover para "Agendados" (modo mover) ou ao alterar o horário (modo alterar).
-  const [agendamento, setAgendamento] = useState<{ leadId: string; nome: string; modo: "mover" | "alterar"; valorInicial?: string } | null>(null);
+  const [agendamento, setAgendamento] = useState<{ leadId: string; nome: string; modo: "mover" | "alterar"; valorInicial?: string; duracaoMin?: number; temEvento: boolean } | null>(null);
   const [enviandoAgendamento, setEnviandoAgendamento] = useState(false);
   const [erroAgendamento, setErroAgendamento] = useState<string | null>(null);
   const enviandoAgendamentoRef = useRef(false);
+
+  // Google Agenda no quadro (crm-google-agenda RF-24 a RF-26).
+  const [avisoAgendaFalhou, setAvisoAgendaFalhou] = useState(false);
+  const [saidaDaAgenda, setSaidaDaAgenda] = useState<{ draggableId: string; destinationId: string } | null>(null);
+  const [tentandoNaAgenda, setTentandoNaAgenda] = useState<Record<string, boolean>>({});
+  const [erroNaAgenda, setErroNaAgenda] = useState<Record<string, boolean>>({});
 
   // Forms
   const createLeadForm = useForm<LeadFormValues>({
@@ -443,6 +453,19 @@ function KanbanContent() {
     setIsEditModalOpen(true);
   };
 
+  // crm-google-agenda RF-27: /kanban?lead=<id> abre o lead no modal do cartão, depois de
+  // carregar o quadro. Só procura nos leads já carregados do tenant ativo; não achou, nada.
+  const leadPedido = searchParams.get("lead");
+  const [leadPedidoTratado, setLeadPedidoTratado] = useState<string | null>(null);
+  const abrirLeadRef = useRef(handleEditClick);
+  abrirLeadRef.current = handleEditClick;
+  useEffect(() => {
+    if (!leadPedido || loading || leadPedidoTratado === leadPedido) return;
+    setLeadPedidoTratado(leadPedido);
+    const lead = (Object.values(boardData).flat() as any[]).find((l) => l?.id === leadPedido);
+    if (lead) abrirLeadRef.current(lead);
+  }, [leadPedido, loading, leadPedidoTratado, boardData]);
+
   const handleUpdateLead = async (data: LeadFormValues) => {
     if (!editingLeadId) return;
     try {
@@ -524,9 +547,11 @@ function KanbanContent() {
     }
   };
 
-  const executeMove = async (draggableId: string, destinationId: string, valor = 0, dataVenda?: string) => {
+  const executeMove = async (draggableId: string, destinationId: string, valor = 0, dataVenda?: string, removerDaAgenda?: boolean) => {
     try {
-      await LeadService.updateStatus(draggableId, destinationId, valor, dataVenda, activeTenantId);
+      // remover_da_agenda só vai quando houve a pergunta do RF-26.
+      if (removerDaAgenda === undefined) await LeadService.updateStatus(draggableId, destinationId, valor, dataVenda, activeTenantId);
+      else await LeadService.updateStatus(draggableId, destinationId, valor, dataVenda, activeTenantId, removerDaAgenda);
       // Sincroniza com o servidor para pegar dados atualizados
       loadLeads(true);
     } catch (err) { 
@@ -577,17 +602,24 @@ function KanbanContent() {
       nome: lead.nome,
       modo,
       valorInicial: modo === "alterar" ? atual : futuro ? atual : undefined,
+      duracaoMin: lead.duracao_min,
+      temEvento: lead.google_situacao === "ok",
     });
   };
 
-  const confirmarAgendamento = async (iso: string) => {
+  const confirmarAgendamento = async (iso: string, noGoogle?: AgendamentoNoGoogle) => {
     if (!agendamento || enviandoAgendamentoRef.current) return;
     enviandoAgendamentoRef.current = true;
     setEnviandoAgendamento(true);
     setErroAgendamento(null);
+    setAvisoAgendaFalhou(false);
     try {
-      await LeadService.agendar(agendamento.leadId, iso, activeTenantId);
+      const resposta = noGoogle
+        ? await LeadService.agendar(agendamento.leadId, iso, activeTenantId, noGoogle)
+        : await LeadService.agendar(agendamento.leadId, iso, activeTenantId);
       setAgendamento(null);
+      // RF-24: o agendamento ficou no CRM; só o Google falhou.
+      if (googleAgendaLigada && resposta?.google_agenda?.situacao === "falhou") setAvisoAgendaFalhou(true);
       loadLeads(true);
     } catch (err) {
       console.error(err);
@@ -595,6 +627,51 @@ function KanbanContent() {
     } finally {
       enviandoAgendamentoRef.current = false;
       setEnviandoAgendamento(false);
+    }
+  };
+
+  // RF-26: a escolha vai no mesmo PUT que muda a coluna; fechar sem escolher cancela o movimento.
+  const responderSaidaDaAgenda = async (remover: boolean) => {
+    const saida = saidaDaAgenda;
+    if (!saida) return;
+    setSaidaDaAgenda(null);
+    await executeMove(saida.draggableId, saida.destinationId, 0, undefined, remover);
+  };
+  const fecharSaidaDaAgenda = () => {
+    setSaidaDaAgenda(null);
+    loadLeads(true);
+  };
+  const fecharSaidaDaAgendaRef = useRef(fecharSaidaDaAgenda);
+  fecharSaidaDaAgendaRef.current = fecharSaidaDaAgenda;
+  useEffect(() => {
+    if (!saidaDaAgenda) return;
+    const aoTeclar = (e: KeyboardEvent) => {
+      if (e.key === "Escape") fecharSaidaDaAgendaRef.current();
+    };
+    document.addEventListener("keydown", aoTeclar);
+    return () => document.removeEventListener("keydown", aoTeclar);
+  }, [saidaDaAgenda]);
+
+  // RF-25: "Tentar de novo" chama o RF-16; ok troca o texto pelo link.
+  const tentarDeNovoNaAgenda = async (leadId: string) => {
+    if (!activeTenantId || tentandoNaAgenda[leadId]) return;
+    setTentandoNaAgenda((atual) => ({ ...atual, [leadId]: true }));
+    setErroNaAgenda((atual) => ({ ...atual, [leadId]: false }));
+    try {
+      const resultado = await GoogleAgendaService.tentarDeNovo(activeTenantId, leadId);
+      if (resultado?.situacao === "ok") {
+        setBoardData((prev: any) => ({
+          ...prev,
+          AGENDADO: (prev.AGENDADO || []).map((l: any) => (l.id === leadId ? { ...l, google_situacao: "ok", google_evento_link: resultado.link } : l)),
+        }));
+      } else {
+        setErroNaAgenda((atual) => ({ ...atual, [leadId]: true }));
+      }
+    } catch (err) {
+      console.error(err);
+      setErroNaAgenda((atual) => ({ ...atual, [leadId]: true }));
+    } finally {
+      setTentandoNaAgenda((atual) => ({ ...atual, [leadId]: false }));
     }
   };
 
@@ -635,6 +712,11 @@ function KanbanContent() {
     const destColDef = COLUMNS.find(c => c.id === destination.droppableId);
 
     // 2. LÓGICA DE MODAIS (Mantém o card no destino enquanto aguarda)
+    // Sair de "Agendados" com evento (menos para "Ganho") pergunta antes (RF-26; substitui o "Mover para trás?").
+    if (googleAgendaLigada && source.droppableId === "AGENDADO" && destination.droppableId !== "GANHO" && (movedLead as any)?.google_situacao === "ok") {
+      setSaidaDaAgenda({ draggableId, destinationId: destination.droppableId });
+      return;
+    }
     // "Agendados" pede data e hora, de qualquer coluna (substitui o "Mover para trás?").
     if (agendamentoLigado && destination.droppableId === "AGENDADO") {
       if (movedLead) abrirAgendamento(movedLead, "mover");
@@ -750,6 +832,14 @@ function KanbanContent() {
           <p role="alert" className="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-medium text-amber-800">
             Não foi possível carregar suas permissões nesta empresa.
           </p>
+        )}
+        {avisoAgendaFalhou && (
+          <div role="alert" className="mb-4 mx-4 md:mx-0 flex items-start justify-between gap-3 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-medium text-amber-800">
+            <p>Agendado no CRM, mas não foi possível pôr na sua agenda.</p>
+            <button type="button" onClick={() => setAvisoAgendaFalhou(false)} aria-label="Fechar aviso" className="shrink-0">
+              <X size={16} aria-hidden="true" />
+            </button>
+          </div>
         )}
         {/* Overlay de Loading Moderno (Cobrindo todo o viewport) */}
         {loading && (
@@ -875,6 +965,36 @@ function KanbanContent() {
                                             </p>
                                           ) : (
                                             <p className="text-xs text-gray-500">Sem horário marcado</p>
+                                          )}
+                                          {googleAgendaLigada && lead.google_situacao === "ok" && lead.google_evento_link && (
+                                            <a
+                                              href={lead.google_evento_link}
+                                              target="_blank"
+                                              rel="noopener noreferrer"
+                                              onClick={(e) => e.stopPropagation()}
+                                              className="text-[11px] font-bold text-brand-blue hover:underline flex items-center gap-1"
+                                            >
+                                              <ExternalLink size={12} className="shrink-0" aria-hidden="true" />Na sua agenda
+                                            </a>
+                                          )}
+                                          {googleAgendaLigada && lead.google_situacao === "falhou" && (
+                                            <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px]">
+                                              <span className="font-bold text-amber-800">Não foi para a agenda</span>
+                                              {podeEditar && (
+                                                <button
+                                                  type="button"
+                                                  onClick={(e) => { e.stopPropagation(); tentarDeNovoNaAgenda(lead.id); }}
+                                                  disabled={!!tentandoNaAgenda[lead.id]}
+                                                  aria-busy={tentandoNaAgenda[lead.id] ? "true" : undefined}
+                                                  className="font-bold text-brand-blue hover:underline disabled:opacity-50"
+                                                >
+                                                  Tentar de novo
+                                                </button>
+                                              )}
+                                              {erroNaAgenda[lead.id] && (
+                                                <p role="alert" className="w-full text-red-600">Não foi possível pôr na sua agenda. Tente de novo mais tarde.</p>
+                                              )}
+                                            </div>
                                           )}
                                           {agendadoEm && !futuro && (
                                             <p role="status" className="bg-amber-50 border border-amber-200 text-amber-800 text-[11px] font-bold rounded px-2 py-1 flex items-start gap-1">
@@ -1431,7 +1551,42 @@ function KanbanContent() {
         erro={erroAgendamento}
         onConfirmar={confirmarAgendamento}
         onCancelar={cancelarAgendamento}
+        googleAgenda={
+          googleAgendaLigada && agendamento && activeTenantId
+            ? {
+                tenantId: activeTenantId,
+                leadId: agendamento.leadId,
+                podeConectar: podeConectarGoogleAgenda,
+                temEvento: agendamento.temEvento,
+                duracaoDoLead: agendamento.duracaoMin,
+              }
+            : undefined
+        }
       />
+
+      {/* Pergunta ao sair de "Agendados" com evento na agenda (crm-google-agenda RF-26) */}
+      {saidaDaAgenda && (
+        <div onClick={fecharSaidaDaAgenda} className="fixed inset-0 bg-black/50 flex items-end md:items-center justify-center md:p-4 z-50 text-gray-900">
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="saida-da-agenda-titulo"
+            onClick={(e) => e.stopPropagation()}
+            className="bg-white rounded-t-[32px] md:rounded-lg w-full max-w-sm shadow-xl border-t-4 border-brand-blue p-6"
+          >
+            <div className="flex justify-between items-start gap-4 mb-6">
+              <h2 id="saida-da-agenda-titulo" className="text-lg font-bold text-brand-blue">Tirar também da sua agenda?</h2>
+              <button type="button" onClick={fecharSaidaDaAgenda} aria-label="Fechar" className="text-gray-400 hover:text-gray-600">
+                <X size={20} aria-hidden="true" />
+              </button>
+            </div>
+            <div className="flex gap-3">
+              <button type="button" onClick={() => responderSaidaDaAgenda(true)} className="flex-1 bg-brand-blue text-white p-2 rounded font-bold hover:brightness-110">Tirar da agenda</button>
+              <button type="button" onClick={() => responderSaidaDaAgenda(false)} className="flex-1 bg-gray-100 p-2 rounded font-bold hover:bg-gray-200">Manter na agenda</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Quick Move Modal (Bottom Sheet) */}
       <AnimatePresence>
@@ -1483,7 +1638,9 @@ function KanbanContent() {
                           destinationId: col.id
                         };
 
-                        if (agendamentoLigado && col.id === "AGENDADO") {
+                        if (googleAgendaLigada && quickMoveLead.status === "AGENDADO" && col.id !== "GANHO" && quickMoveLead.google_situacao === "ok") {
+                          setSaidaDaAgenda({ draggableId: quickMoveLead.id, destinationId: col.id });
+                        } else if (agendamentoLigado && col.id === "AGENDADO") {
                           abrirAgendamento(quickMoveLead, "mover");
                         } else if (col.id === "GANHO") {
                           setPendingMove(moveData);

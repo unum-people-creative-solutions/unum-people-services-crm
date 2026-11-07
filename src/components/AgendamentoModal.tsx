@@ -4,10 +4,22 @@ import { useEffect, useId, useRef, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Calendar } from "lucide-react";
 import { paraUTC, partesEmBrasilia, semLembretePush, validarAgendamento } from "@/lib/agendamento";
+import { URL_ABA_GOOGLE_AGENDA } from "@/lib/google-agenda";
+import { GoogleAgendaService, type AgendamentoNoGoogle, type SituacaoGoogleAgenda } from "@/services/api";
 
 // Modal de agendamento do quadro (spec crm-agendamento-e-lembretes RF-52;
 // blueprint DESIGN-BLUEPRINT-crm-agendamento §2). Casca do modal "Venda
 // Concluída!": folha de baixo no celular, cartão central no desktop.
+
+// Google Agenda no modal (spec crm-google-agenda RF-22, RF-23): só com as flags
+// crm-google-agenda e crm-agendamento ligadas; sem isto, o modal é o de antes.
+export interface GoogleAgendaNoModal {
+  tenantId: string;
+  leadId: string;
+  podeConectar: boolean;
+  temEvento: boolean;
+  duracaoDoLead?: number;
+}
 
 export interface AgendamentoModalProps {
   aberto: boolean;
@@ -16,8 +28,10 @@ export interface AgendamentoModalProps {
   valorInicial?: string;
   enviando: boolean;
   erro: string | null;
-  onConfirmar(iso: string): void;
+  // noGoogle só vai com a integração ativa; sem ela, o corpo do agendamento é o de antes.
+  onConfirmar(iso: string, noGoogle?: AgendamentoNoGoogle): void;
   onCancelar(): void;
+  googleAgenda?: GoogleAgendaNoModal;
 }
 
 const TEXTOS = {
@@ -26,6 +40,8 @@ const TEXTOS = {
 } as const;
 
 const DIA = 24 * 60 * 60 * 1000;
+const MINUTO = 60 * 1000;
+const ATRASO_DO_CONFLITO = 400;
 
 // Hoje e hoje + 365 dias no calendário de Brasília (YYYY-MM-DD).
 function limitesDaData(agora: Date) {
@@ -39,7 +55,7 @@ export function AgendamentoModal(props: AgendamentoModalProps) {
   return <AnimatePresence>{props.aberto && <ConteudoDoModal {...props} />}</AnimatePresence>;
 }
 
-function ConteudoDoModal({ modo, nomeDoLead, valorInicial, enviando, erro, onConfirmar, onCancelar }: AgendamentoModalProps) {
+function ConteudoDoModal({ modo, nomeDoLead, valorInicial, enviando, erro, onConfirmar, onCancelar, googleAgenda }: AgendamentoModalProps) {
   const textos = TEXTOS[modo];
   const inicial = valorInicial ? partesEmBrasilia(valorInicial) : { data: "", hora: "" };
   const [data, setData] = useState(inicial.data);
@@ -58,6 +74,59 @@ function ConteudoDoModal({ modo, nomeDoLead, valorInicial, enviando, erro, onCon
   const idErroHora = "agendamento-hora-erro";
 
   const dataRef = useRef<HTMLInputElement>(null);
+
+  // Google Agenda: situação lida ao abrir; "erro" quando a leitura falha.
+  const [integracao, setIntegracao] = useState<SituacaoGoogleAgenda | "erro" | null>(null);
+  const [duracao, setDuracao] = useState("");
+  const [noGoogle, setNoGoogle] = useState(modo === "mover" || !!googleAgenda?.temEvento);
+  const [ocupados, setOcupados] = useState<string[]>([]);
+  const mudouHorario = useRef(false);
+  const tenantId = googleAgenda?.tenantId;
+  const leadId = googleAgenda?.leadId;
+  const duracaoDoLead = googleAgenda?.duracaoDoLead;
+  const ativa = integracao !== null && integracao !== "erro" && integracao.conectada && integracao.situacao === "ativa";
+
+  useEffect(() => {
+    if (!tenantId) return;
+    let cancelado = false;
+    GoogleAgendaService.situacao(tenantId)
+      .then((dados) => {
+        if (cancelado) return;
+        setIntegracao(dados);
+        if (dados.conectada) setDuracao(String(modo === "alterar" && duracaoDoLead ? duracaoDoLead : dados.duracao_padrao_min));
+      })
+      .catch((err) => {
+        console.error("Falha ao ler o Google Agenda", err);
+        if (!cancelado) setIntegracao("erro");
+      });
+    return () => {
+      cancelado = true;
+    };
+  }, [tenantId, modo, duracaoDoLead]);
+
+  // Conflito (RF-22): 400 ms depois da última mudança de data, hora ou duração.
+  useEffect(() => {
+    if (!mudouHorario.current || !ativa || !tenantId) return;
+    setOcupados([]);
+    const minutos = Number(duracao);
+    if (!data || !hora || !Number.isFinite(minutos) || minutos <= 0) return;
+    const inicio = paraUTC(data, hora);
+    const fim = new Date(Date.parse(inicio) + minutos * MINUTO).toISOString().replace(/\.\d{3}Z$/, "Z");
+    let cancelado = false;
+    const espera = setTimeout(() => {
+      GoogleAgendaService.ocupado(tenantId, inicio, fim, modo === "alterar" ? leadId : undefined)
+        .then((intervalos) => {
+          if (cancelado) return;
+          setOcupados(intervalos.map((i) => `${partesEmBrasilia(i.inicio).hora}–${partesEmBrasilia(i.fim).hora}`));
+        })
+        // RF-22: com erro, o aviso só não aparece (nunca bloqueia o agendamento).
+        .catch((err) => console.error("Falha ao consultar horários ocupados", err));
+    }, ATRASO_DO_CONFLITO);
+    return () => {
+      cancelado = true;
+      clearTimeout(espera);
+    };
+  }, [data, hora, duracao, ativa, tenantId, modo, leadId]);
 
   // Cancelar não vale enquanto a chamada está no ar (blueprint §2.3).
   const cancelar = () => {
@@ -128,7 +197,10 @@ function ConteudoDoModal({ modo, nomeDoLead, valorInicial, enviando, erro, onCon
     }
     setErroData(novoErroData);
     setErroHora(novoErroHora);
-    if (iso && !novoErroData && !novoErroHora) onConfirmar(iso);
+    if (iso && !novoErroData && !novoErroHora) {
+      if (ativa) onConfirmar(iso, { duracao_min: Number(duracao), google_agenda: noGoogle });
+      else onConfirmar(iso);
+    }
   };
 
   let dicaCurta = false;
@@ -193,7 +265,7 @@ function ConteudoDoModal({ modo, nomeDoLead, valorInicial, enviando, erro, onCon
                 min={limites.min}
                 max={limites.max}
                 value={data}
-                onChange={(e) => { setData(e.target.value); limparErros(); }}
+                onChange={(e) => { setData(e.target.value); limparErros(); mudouHorario.current = true; }}
                 aria-invalid={erroData ? "true" : undefined}
                 aria-describedby={erroData ? idErroData : undefined}
                 className={classeCampo(!!erroData)}
@@ -207,13 +279,58 @@ function ConteudoDoModal({ modo, nomeDoLead, valorInicial, enviando, erro, onCon
                 type="time"
                 required
                 value={hora}
-                onChange={(e) => { setHora(e.target.value); limparErros(); }}
+                onChange={(e) => { setHora(e.target.value); limparErros(); mudouHorario.current = true; }}
                 aria-invalid={erroHora ? "true" : undefined}
                 aria-describedby={erroHora ? idErroHora : undefined}
                 className={classeCampo(!!erroHora)}
               />
               {erroHora && <p id={idErroHora} className="text-red-500 text-xs mt-1">{erroHora}</p>}
             </div>
+
+            {ativa && (
+              <>
+                <div>
+                  <label htmlFor="agendamento-duracao" className="block text-xs font-bold text-gray-400 uppercase mb-1">Duração (min)</label>
+                  <input
+                    id="agendamento-duracao"
+                    type="number"
+                    min={15}
+                    max={240}
+                    step={5}
+                    value={duracao}
+                    onChange={(e) => { setDuracao(e.target.value); mudouHorario.current = true; }}
+                    className={classeCampo(false)}
+                  />
+                </div>
+                <label className="flex items-center gap-2 text-sm font-bold text-gray-700">
+                  <input type="checkbox" checked={noGoogle} onChange={(e) => setNoGoogle(e.target.checked)} />
+                  Adicionar ao Google Agenda
+                </label>
+                {ocupados.length > 0 && (
+                  <p role="status" className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-medium text-amber-800">
+                    {`Esse horário já está ocupado na sua agenda (${ocupados.join(", ")}).`}
+                  </p>
+                )}
+              </>
+            )}
+            {integracao !== null && integracao !== "erro" && !integracao.conectada && googleAgenda?.podeConectar && (
+              <p className="text-xs text-gray-600">
+                Conecte o Google Agenda para o horário ir direto para a sua agenda.{" "}
+                <a href={URL_ABA_GOOGLE_AGENDA} className="font-bold text-brand-blue underline">Conectar o Google Agenda</a>
+              </p>
+            )}
+            {integracao !== null && integracao !== "erro" && integracao.conectada && integracao.situacao !== "ativa" && (
+              <p className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-medium text-amber-800">
+                A conexão com o Google Agenda caiu. Reconecte em Configurações.
+              </p>
+            )}
+            {/* SPEC_DEVIATION: o RF-22/RF-23 não dão texto para a falha ao ler a integração.
+                Reason: erro de API sempre visível (AGENTS.md); o agendamento segue sem os campos novos. */}
+            {integracao === "erro" && (
+              <p role="alert" className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-medium text-amber-800">
+                Não foi possível ler o Google Agenda. O horário fica só no CRM.
+              </p>
+            )}
 
             <p className="text-xs text-gray-500">
               {dicaCurta

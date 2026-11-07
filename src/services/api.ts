@@ -81,6 +81,58 @@ export interface LeadAgendamento {
   agendado_em?: string;
 }
 
+// Google Agenda (spec crm-google-agenda RF-02 a RF-16). Nenhum tipo leva token
+// (TECH-DESIGN §8): a API nunca o devolve.
+export type SituacaoDoEventoGoogle = 'ok' | 'falhou' | 'removido';
+
+// Campos do lead no GET /leads (RF-14), só com a integração ligada.
+export interface LeadGoogleAgenda {
+  duracao_min?: number;
+  google_evento_link?: string;
+  google_situacao?: SituacaoDoEventoGoogle;
+}
+
+export interface ConexaoGoogleAgenda {
+  conectada: true;
+  situacao: 'ativa' | 'caida';
+  email: string;
+  agenda_id: string;
+  agenda_nome: string;
+  duracao_padrao_min: number;
+  conflito: boolean;
+  lista_agendas: boolean;
+}
+
+export type SituacaoGoogleAgenda = { conectada: false } | ConexaoGoogleAgenda;
+
+export interface AgendaGoogle {
+  id: string;
+  nome: string;
+  principal: boolean;
+}
+
+export interface IntervaloOcupado {
+  inicio: string;
+  fim: string;
+}
+
+// Resultado da tentativa no Google, na resposta do PUT /leads/{id} e do RF-16.
+export interface ResultadoGoogleAgenda {
+  situacao: SituacaoDoEventoGoogle;
+  link?: string;
+}
+
+export interface RespostaAgendamento {
+  message?: string;
+  google_agenda?: ResultadoGoogleAgenda;
+}
+
+// Campos do RF-15 que o modal manda junto com o agendamento.
+export interface AgendamentoNoGoogle {
+  duracao_min: number;
+  google_agenda: boolean;
+}
+
 export const LeadService = {
   list: async (status: string, startDate?: string, endDate?: string, tenantId?: string) => {
     const params = new URLSearchParams({ status });
@@ -106,22 +158,31 @@ export const LeadService = {
     const response = await api.post(url, data);
     return response.data;
   },
-  updateStatus: async (id: string, status: string, valor?: number, dataVenda?: string, tenantId?: string) => {
+  // removerDaAgenda (crm-google-agenda RF-26): a resposta à pergunta ao sair de "Agendados";
+  // sem pergunta, a chave não vai.
+  updateStatus: async (id: string, status: string, valor?: number, dataVenda?: string, tenantId?: string, removerDaAgenda?: boolean) => {
     let url = `/leads/${id}`;
     if (tenantId) {
       url += `?tenant_id=${encodeURIComponent(tenantId)}`;
     }
-    const response = await api.put(url, { status, valor_venda: valor, data_venda: dataVenda });
+    const corpo = removerDaAgenda === undefined
+      ? { status, valor_venda: valor, data_venda: dataVenda }
+      : { status, valor_venda: valor, data_venda: dataVenda, remover_da_agenda: removerDaAgenda };
+    const response = await api.put(url, corpo);
     return response.data;
   },
   // Move para "Agendados" ou altera o horário: PUT /leads/{id} com corpo exatamente
-  // {"status":"AGENDADO","agendado_em":<RFC3339 UTC>} (TECH-DESIGN §5.1/§5.7).
-  agendar: async (id: string, agendadoEm: string, tenantId?: string) => {
+  // {"status":"AGENDADO","agendado_em":<RFC3339 UTC>} (TECH-DESIGN §5.1/§5.7); com o
+  // Google Agenda ativo, também duracao_min e google_agenda (crm-google-agenda RF-22).
+  agendar: async (id: string, agendadoEm: string, tenantId?: string, noGoogle?: AgendamentoNoGoogle): Promise<RespostaAgendamento> => {
     let url = `/leads/${id}`;
     if (tenantId) {
       url += `?tenant_id=${encodeURIComponent(tenantId)}`;
     }
-    const response = await api.put(url, { status: 'AGENDADO', agendado_em: agendadoEm });
+    const corpo = noGoogle
+      ? { status: 'AGENDADO', agendado_em: agendadoEm, duracao_min: noGoogle.duracao_min, google_agenda: noGoogle.google_agenda }
+      : { status: 'AGENDADO', agendado_em: agendadoEm };
+    const response = await api.put(url, corpo);
     return response.data;
   },
   update: async (id: string, data: { nome: string; email?: string; telefone: string; cpf?: string; data_nascimento?: string; origem?: string; anotacoes?: string }, tenantId?: string) => {
@@ -246,6 +307,45 @@ export const FlagsService = {
   get: async (tenantId: string): Promise<Record<string, boolean>> => {
     const response = await api.get(`/me/flags?tenant_id=${encodeURIComponent(tenantId)}`);
     return response.data.flags;
+  },
+};
+
+// Rotas do Google Agenda (crm-google-agenda RF-07); empresa pela query tenant_id.
+const qsTenant = (tenantId: string) => `tenant_id=${encodeURIComponent(tenantId)}`;
+
+export const GoogleAgendaService = {
+  situacao: async (tenantId: string): Promise<SituacaoGoogleAgenda> => {
+    const response = await api.get(`/integracoes/google-agenda?${qsTenant(tenantId)}`);
+    return response.data;
+  },
+  conectar: async (tenantId: string, code: string, redirectUri: string): Promise<SituacaoGoogleAgenda> => {
+    const response = await api.post(`/integracoes/google-agenda/conectar?${qsTenant(tenantId)}`, {
+      code,
+      redirect_uri: redirectUri,
+    });
+    return response.data;
+  },
+  agendas: async (tenantId: string): Promise<AgendaGoogle[]> => {
+    const response = await api.get(`/integracoes/google-agenda/agendas?${qsTenant(tenantId)}`);
+    return response.data;
+  },
+  configurar: async (tenantId: string, dados: { agenda_id: string; duracao_padrao_min: number }): Promise<SituacaoGoogleAgenda> => {
+    const { agenda_id, duracao_padrao_min } = dados;
+    const response = await api.put(`/integracoes/google-agenda?${qsTenant(tenantId)}`, { agenda_id, duracao_padrao_min });
+    return response.data;
+  },
+  desconectar: async (tenantId: string): Promise<void> => {
+    await api.delete(`/integracoes/google-agenda?${qsTenant(tenantId)}`);
+  },
+  ocupado: async (tenantId: string, inicio: string, fim: string, leadId?: string): Promise<IntervaloOcupado[]> => {
+    const params = new URLSearchParams({ tenant_id: tenantId, inicio, fim });
+    if (leadId) params.append('lead', leadId);
+    const response = await api.get(`/integracoes/google-agenda/ocupado?${params.toString()}`);
+    return response.data.ocupado;
+  },
+  tentarDeNovo: async (tenantId: string, leadId: string): Promise<ResultadoGoogleAgenda> => {
+    const response = await api.post(`/leads/${leadId}/google-agenda?${qsTenant(tenantId)}`);
+    return response.data.google_agenda;
   },
 };
 
