@@ -164,9 +164,17 @@ describe('useEsperaDoPagamento (CRM)', () => {
 
   it('parcial (R6): continua bloqueado com outro fatura.vencimento → "parcial", com o vencimento guardado, e a chave é apagada', () => {
     const recarregar = vi.fn().mockResolvedValue(undefined);
+    // Antes do pagamento parcial, como a API monta: fatura = OVERDUE mais antiga
+    // (RF2-08) e vencida_em = DelinquencySince = o vencimento dela (RF1-20), com
+    // as demais datas contadas dele. Depois: resumoBloqueado (resta a de 05/11).
     const comDuasVencidas: ResumoDeCobranca = {
       ...resumoBloqueado,
-      fatura: { valor: 39.9, vencimento: '2026-10-05', link: 'https://www.asaas.com/i/abc' },
+      fatura: { valor: 39.9, vencimento: '2026-10-05', link: 'https://www.asaas.com/i/def' },
+      vencida_em: '2026-10-05',
+      pagar_ate: '2026-10-14',
+      bloqueio_em: '2026-10-15',
+      fora_do_ar_em: '2026-11-04',
+      cancelamento_em: '2026-12-04',
     };
     const { result, rerender } = montar(recarregar, { tenantId: 't1', resumo: comDuasVencidas });
     act(() => result.current.iniciar('2026-10-05'));
