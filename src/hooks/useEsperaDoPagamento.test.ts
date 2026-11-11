@@ -1,3 +1,4 @@
+import { StrictMode } from 'react';
 import { renderHook, act } from '@testing-library/react';
 import { vi, describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { useEsperaDoPagamento } from './useEsperaDoPagamento';
@@ -215,11 +216,28 @@ describe('useEsperaDoPagamento (CRM)', () => {
     expect(result.current.estado).toBe('parado');
   });
 
-  it('chave guardada há mais de 10 min é apagada e não retoma a espera', () => {
+  // L3 do Verifier F2: recarregar depois dos 10 min dá o mesmo desfecho dos 10 min
+  // com a página aberta, como no Portal (também com os efeitos rodando duas vezes).
+  it('recarregar depois dos 10 min: "sem_confirmacao", chave apagada e sem consultas por intervalo', async () => {
     sessionStorage.setItem(CHAVE, JSON.stringify({ clicado_em: AGORA - 600_001, vencimento: '2026-11-05' }));
-    const { result } = montar(vi.fn().mockResolvedValue(undefined));
-    expect(result.current.estado).toBe('parado');
+    const recarregar = vi.fn().mockResolvedValue(undefined);
+    const { result } = renderHook(() => useEsperaDoPagamento('t1', resumoBloqueado, recarregar), { wrapper: StrictMode });
+    expect(result.current.estado).toBe('sem_confirmacao');
     expect(sessionStorage.getItem(CHAVE)).toBeNull();
+    await avancar(60_000);
+    expect(recarregar).not.toHaveBeenCalled();
+    expect(result.current.estado).toBe('sem_confirmacao');
+  });
+
+  it('troca de empresa: a espera vencida de uma não apaga a chave da outra', () => {
+    sessionStorage.setItem(CHAVE, JSON.stringify({ clicado_em: AGORA - 11 * 60_000, vencimento: '2026-11-05' }));
+    sessionStorage.setItem('cobranca-aguardando:t2', JSON.stringify({ clicado_em: AGORA - 60_000, vencimento: '2026-11-05' }));
+    const { result, rerender } = montar(vi.fn().mockResolvedValue(undefined));
+    expect(result.current.estado).toBe('sem_confirmacao');
+
+    rerender({ tenantId: 't2', resumo: resumoBloqueado });
+    expect(result.current.estado).toBe('aguardando');
+    expect(sessionStorage.getItem('cobranca-aguardando:t2')).not.toBeNull();
   });
 
   it('fechar apaga a chave e volta a "parado"', async () => {

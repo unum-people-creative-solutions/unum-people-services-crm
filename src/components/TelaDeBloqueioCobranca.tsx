@@ -179,19 +179,22 @@ export default function TelaDeBloqueioCobranca({ tenantId, resumo, recarregar }:
 
         {resumo && !podeGerir && <p className="text-sm font-semibold text-gray-900 mb-2">Avise o responsável</p>}
 
-        {espera.estado === "aguardando" && (
-          <div role="status" className="mt-4 rounded-xl bg-gray-50 p-3 text-sm text-gray-700">
-            <p className="font-bold text-gray-900">Aguardando a confirmação do pagamento</p>
-            <p>Pix e cartão costumam confirmar em poucos minutos. Esta tela atualiza sozinha.</p>
-          </div>
-        )}
+        {/* Região viva fixa: anuncia a espera e o desfecho dos 10 min, como no Portal. */}
+        <div role="status">
+          {espera.estado === "aguardando" && (
+            <div className="mt-4 rounded-xl bg-gray-50 p-3 text-sm text-gray-700">
+              <p className="font-bold text-gray-900">Aguardando a confirmação do pagamento</p>
+              <p>Pix e cartão costumam confirmar em poucos minutos. Esta tela atualiza sozinha.</p>
+            </div>
+          )}
 
-        {espera.estado === "sem_confirmacao" && (
-          <p className="mt-4 text-sm text-gray-700">
-            Ainda não recebemos a confirmação. Pix e cartão confirmam em poucos minutos. Boleto leva até 3 dias úteis. O
-            acesso volta sozinho quando o pagamento for confirmado.
-          </p>
-        )}
+          {espera.estado === "sem_confirmacao" && (
+            <p className="mt-4 text-sm text-gray-700">
+              Ainda não recebemos a confirmação. Pix e cartão confirmam em poucos minutos. Boleto leva até 3 dias úteis.
+              O acesso volta sozinho quando o pagamento for confirmado.
+            </p>
+          )}
+        </div>
 
         {espera.falhou && (
           <p role="alert" className="mt-4 bg-red-50 border-l-4 border-red-500 p-3 text-left text-sm text-red-800">

@@ -39,7 +39,7 @@ function removerChave(tenantId: string) {
   }
 }
 
-// Chave guardada e ainda dentro dos 10 min do clique; vencida ou ilegível é apagada.
+// Chave guardada (dentro ou fora dos 10 min do clique); ilegível é apagada.
 function lerGuardado(tenantId: string): Guardado | null {
   if (typeof window === 'undefined' || !tenantId) return null;
   let guardado: Guardado | null = null;
@@ -50,12 +50,7 @@ function lerGuardado(tenantId: string): Guardado | null {
   } catch {
     guardado = null;
   }
-  if (
-    !guardado ||
-    typeof guardado.clicado_em !== 'number' ||
-    typeof guardado.vencimento !== 'string' ||
-    Date.now() - guardado.clicado_em >= LIMITE_MS
-  ) {
+  if (!guardado || typeof guardado.clicado_em !== 'number' || typeof guardado.vencimento !== 'string') {
     removerChave(tenantId);
     return null;
   }
@@ -65,11 +60,20 @@ function lerGuardado(tenantId: string): Guardado | null {
 interface Espera {
   estado: EstadoDaEspera;
   guardado: Guardado | null;
+  // Empresa cuja chave passou dos 10 min ao ser lida: um efeito a apaga depois
+  // (o inicializador do estado pode rodar duas vezes e não apaga nada).
+  vencidaDe?: string;
 }
 
+// Recarregar depois dos 10 min dá o mesmo desfecho dos 10 min com a página
+// aberta, como no Portal (L3 do Verifier F2).
 function esperaDaChave(tenantId: string): Espera {
   const guardado = lerGuardado(tenantId);
-  return { estado: guardado ? 'aguardando' : 'parado', guardado };
+  if (!guardado) return { estado: 'parado', guardado: null };
+  if (Date.now() - guardado.clicado_em >= LIMITE_MS) {
+    return { estado: 'sem_confirmacao', guardado, vencidaDe: tenantId };
+  }
+  return { estado: 'aguardando', guardado };
 }
 
 export function useEsperaDoPagamento(
@@ -99,6 +103,11 @@ export function useEsperaDoPagamento(
     setEspera(esperaDaChave(tenantId));
     setFalhas(0);
   }, [tenantId]);
+
+  const { vencidaDe } = espera;
+  useEffect(() => {
+    if (vencidaDe) removerChave(vencidaDe);
+  }, [vencidaDe]);
 
   const consultar = useCallback(() => {
     recarregarRef.current().then(

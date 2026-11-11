@@ -33,6 +33,8 @@ vi.mock("@/lib/pkce", () => ({
 
 const TITULO = "Acesso bloqueado por fatura em atraso";
 const BOLETO = "Já pagou por boleto? A confirmação leva até 3 dias úteis. O acesso volta sozinho quando o pagamento for confirmado.";
+const SEM_CONFIRMACAO =
+  "Ainda não recebemos a confirmação. Pix e cartão confirmam em poucos minutos. Boleto leva até 3 dias úteis. O acesso volta sozinho quando o pagamento for confirmado.";
 const UMA_EMPRESA = [{ id: "t1", nome_negocio: "Padaria Zé" }];
 const DUAS_EMPRESAS = [
   { id: "t1", nome_negocio: "Padaria Zé" },
@@ -293,17 +295,31 @@ describe("TelaDeBloqueioCobranca — espera do pagamento", () => {
       fireEvent.click(screen.getByRole("link", { name: /Pagar fatura/ }));
       await avancar(600_000);
 
-      expect(
-        screen.getByText(
-          "Ainda não recebemos a confirmação. Pix e cartão confirmam em poucos minutos. Boleto leva até 3 dias úteis. O acesso volta sozinho quando o pagamento for confirmado."
-        )
-      ).toBeInTheDocument();
+      // Região viva, como no Portal (L3 do Verifier F2).
+      expect(screen.getByRole("status")).toHaveTextContent(SEM_CONFIRMACAO);
       expect(screen.queryByText("Aguardando a confirmação do pagamento")).not.toBeInTheDocument();
       expect(screen.getByRole("link", { name: /Pagar fatura/ })).toBeInTheDocument();
 
       const antes = recarregar.mock.calls.length;
       fireEvent.click(screen.getByRole("button", { name: "Conferir agora" }));
       expect(recarregar).toHaveBeenCalledTimes(antes + 1);
+    });
+
+    it("recarregar depois dos 10 min: \"Ainda não recebemos a confirmação…\" na região viva, \"Conferir agora\" e \"Pagar fatura\"", async () => {
+      sessionStorage.setItem(
+        "cobranca-aguardando:t1",
+        JSON.stringify({ clicado_em: Date.now() - 11 * 60_000, vencimento: "2026-11-05" })
+      );
+      const { recarregar } = renderTela(resumoBloqueado);
+      await avancar(0);
+
+      expect(screen.getByRole("status")).toHaveTextContent(SEM_CONFIRMACAO);
+      expect(screen.queryByText("Aguardando a confirmação do pagamento")).not.toBeInTheDocument();
+      expect(screen.getByRole("link", { name: /Pagar fatura/ })).toBeInTheDocument();
+      expect(sessionStorage.getItem("cobranca-aguardando:t1")).toBeNull();
+
+      fireEvent.click(screen.getByRole("button", { name: "Conferir agora" }));
+      expect(recarregar).toHaveBeenCalledTimes(1);
     });
 
     it("três consultas seguidas com falha: alerta com \"Conferir agora\"", async () => {
