@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { ExternalLink } from "lucide-react";
 import { useAuthStore } from "@/store/authStore";
 import { TenantService } from "@/services/api";
 import { logoutFromHostedUI } from "@/lib/pkce";
@@ -213,7 +214,10 @@ export default function TelaDeBloqueioCobranca({ tenantId, resumo, recarregar }:
               onClick={() => espera.iniciar(fatura.vencimento)}
               className={esperando ? botaoSecundario : botaoPrimario}
             >
-              Pagar fatura <span className="sr-only">(abre em nova aba)</span>
+              <span className="inline-flex items-center justify-center gap-2">
+                Pagar fatura <ExternalLink size={16} aria-hidden="true" />
+              </span>
+              <span className="sr-only">(abre em nova aba)</span>
             </a>
           )}
           <a

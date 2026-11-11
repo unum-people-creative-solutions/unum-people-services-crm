@@ -81,6 +81,8 @@ describe("TelaDeBloqueioCobranca — Suspenso (bloqueado)", () => {
     expect(pagar).toHaveAttribute("target", "_blank");
     expect(pagar).toHaveAttribute("rel", "noopener noreferrer");
     expect(pagar).toHaveAccessibleName(/abre em nova aba/);
+    // BP-T §14 "Nova aba": ícone ExternalLink visível, fora da leitura.
+    expect(pagar.querySelector('svg[aria-hidden="true"]')).not.toBeNull();
 
     const portal = screen.getByRole("link", { name: "Ir para o Portal do cliente" });
     expect(portal).toHaveAttribute("href", "https://customer.unumpeople.com.br?tenant_id=t1");
