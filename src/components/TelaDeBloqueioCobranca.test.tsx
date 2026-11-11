@@ -8,8 +8,11 @@ import { ACTIVE_TENANT_CHANGE_EVENT, ACTIVE_TENANT_KEY } from "@/lib/activeTenan
 import type { ResumoDeCobranca } from "@/types/cobranca";
 import {
   resumoBloqueado,
+  resumoBloqueadoAntesDoParcial,
+  resumoBloqueadoComOutroVencimento,
   resumoBloqueadoSemFatura,
   resumoBloqueadoSemGerir,
+  resumoEmAtrasoDepoisDoParcial,
   resumoEmDia,
   resumoForaDoAr,
 } from "@/services/__fixtures__/cobranca";
@@ -264,13 +267,28 @@ describe("TelaDeBloqueioCobranca — espera do pagamento", () => {
     Object.defineProperty(window, "location", { configurable: true, value: locationOriginal });
   });
 
-  it("parcial (R6): a linha do pagamento recebido aparece acima do texto", async () => {
-    sessionStorage.setItem("cobranca-aguardando:t1", JSON.stringify({ clicado_em: Date.now() - 30_000, vencimento: "2026-10-05" }));
-    renderTela(resumoBloqueado);
+  it("R6 real (RF2-52): bloqueado com 31/01 e 28/02, pago o 31/01 → em_atraso com o crm liberado: \"Pagamento confirmado\" e \"Seu acesso está liberado.\"", async () => {
+    const { rerender, recarregar } = renderTela(resumoBloqueadoAntesDoParcial);
+    await esperarEmpresas();
+    fireEvent.click(screen.getByRole("link", { name: /Pagar fatura/ }));
+    expect(JSON.parse(sessionStorage.getItem("cobranca-aguardando:t1")!).vencimento).toBe("2026-01-31");
+
+    rerender(<TelaDeBloqueioCobranca tenantId="t1" resumo={resumoEmAtrasoDepoisDoParcial} recarregar={recarregar} />);
+
+    expect(screen.getByRole("heading", { level: 1, name: "Pagamento confirmado" })).toHaveFocus();
+    expect(screen.getByText("Seu acesso está liberado.")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Continuar" })).toBeInTheDocument();
+    expect(screen.queryByText(/Recebemos o pagamento da fatura de/)).not.toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: TITULO })).not.toBeInTheDocument();
+  });
+
+  it("parcial (RF2-33): a linha do pagamento recebido aparece acima do texto", async () => {
+    sessionStorage.setItem("cobranca-aguardando:t1", JSON.stringify({ clicado_em: Date.now() - 30_000, vencimento: "2026-01-31" }));
+    renderTela(resumoBloqueadoComOutroVencimento);
     await esperarEmpresas();
 
-    const linha = screen.getByText("Recebemos o pagamento da fatura de 05/10. Ainda há outra fatura em atraso.");
-    const texto = screen.getByText(/Sua página publicada continua no ar até 04\/12\./);
+    const linha = screen.getByText("Recebemos o pagamento da fatura de 31/01. Ainda há outra fatura em atraso.");
+    const texto = screen.getByText(/Sua página publicada continua no ar até 29\/03\./);
     expect(linha.compareDocumentPosition(texto) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(screen.queryByText("Aguardando a confirmação do pagamento")).not.toBeInTheDocument();
   });

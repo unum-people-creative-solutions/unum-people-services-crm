@@ -3,7 +3,15 @@ import { renderHook, act } from '@testing-library/react';
 import { vi, describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { useEsperaDoPagamento } from './useEsperaDoPagamento';
 import type { ResumoDeCobranca } from '@/types/cobranca';
-import { resumoBloqueado, resumoEmAtraso, resumoEmDia } from '@/services/__fixtures__/cobranca';
+import {
+  RELOGIO_DO_PARCIAL,
+  resumoBloqueado,
+  resumoBloqueadoAntesDoParcial,
+  resumoBloqueadoComOutroVencimento,
+  resumoEmAtraso,
+  resumoEmAtrasoDepoisDoParcial,
+  resumoEmDia,
+} from '@/services/__fixtures__/cobranca';
 
 // spec cobranca-e-plano-do-cliente RF2-33 e RF2-52 (sinal do CRM: "crm" saiu de
 // ferramentas_bloqueadas); BP-T §5 e §15.3 "Liberação"; T42 no nível do hook.
@@ -162,25 +170,26 @@ describe('useEsperaDoPagamento (CRM)', () => {
     expect(result.current.estado).toBe('aguardando');
   });
 
-  it('parcial (R6): continua bloqueado com outro fatura.vencimento → "parcial", com o vencimento guardado, e a chave é apagada', () => {
+  it('R6 real (RF2-52): bloqueado com 31/01 e 28/02 vencidas, pago o 31/01 → em_atraso com 28/02 e "crm" fora da lista → "confirmado"', () => {
+    vi.setSystemTime(RELOGIO_DO_PARCIAL);
     const recarregar = vi.fn().mockResolvedValue(undefined);
-    // Antes do pagamento parcial, como a API monta: fatura = OVERDUE mais antiga
-    // (RF2-08) e vencida_em = DelinquencySince = o vencimento dela (RF1-20), com
-    // as demais datas contadas dele. Depois: resumoBloqueado (resta a de 05/11).
-    const comDuasVencidas: ResumoDeCobranca = {
-      ...resumoBloqueado,
-      fatura: { valor: 39.9, vencimento: '2026-10-05', link: 'https://www.asaas.com/i/def' },
-      vencida_em: '2026-10-05',
-      pagar_ate: '2026-10-14',
-      bloqueio_em: '2026-10-15',
-      fora_do_ar_em: '2026-11-04',
-      cancelamento_em: '2026-12-04',
-    };
-    const { result, rerender } = montar(recarregar, { tenantId: 't1', resumo: comDuasVencidas });
-    act(() => result.current.iniciar('2026-10-05'));
-    rerender({ tenantId: 't1', resumo: resumoBloqueado });
+    const { result, rerender } = montar(recarregar, { tenantId: 't1', resumo: resumoBloqueadoAntesDoParcial });
+    act(() => result.current.iniciar('2026-01-31'));
+    rerender({ tenantId: 't1', resumo: resumoEmAtrasoDepoisDoParcial });
+    expect(result.current.estado).toBe('confirmado');
+    expect(sessionStorage.getItem(CHAVE)).toBeNull();
+  });
+
+  it('parcial (RF2-33): continua bloqueado com outro fatura.vencimento → "parcial", com o vencimento guardado, e a chave é apagada', () => {
+    vi.setSystemTime(RELOGIO_DO_PARCIAL);
+    const recarregar = vi.fn().mockResolvedValue(undefined);
+    // Antes: o par real do R6 (fatura = OVERDUE mais antiga, 31/01). Depois: ainda bloqueado
+    // com a de 28/02 (o desfecho que o RF2-33 escreve; ver a fixture).
+    const { result, rerender } = montar(recarregar, { tenantId: 't1', resumo: resumoBloqueadoAntesDoParcial });
+    act(() => result.current.iniciar('2026-01-31'));
+    rerender({ tenantId: 't1', resumo: resumoBloqueadoComOutroVencimento });
     expect(result.current.estado).toBe('parcial');
-    expect(result.current.vencimentoPago).toBe('2026-10-05');
+    expect(result.current.vencimentoPago).toBe('2026-01-31');
     expect(sessionStorage.getItem(CHAVE)).toBeNull();
   });
 
