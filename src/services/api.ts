@@ -3,6 +3,9 @@ import { useAuthStore } from '@/store/authStore';
 import { redirectToHostedUI } from '@/lib/pkce';
 import type { ResumoDeCobranca } from '@/types/cobranca';
 
+// Disparado em window quando a API recusa com 403 { motivo: "cobranca" } (RF2-51).
+export const EVENTO_COBRANCA_BLOQUEADA = 'unum:cobranca-bloqueada';
+
 const api = axios.create({
   baseURL: process.env.NEXT_PUBLIC_API_GATEWAY_URL,
 });
@@ -28,10 +31,16 @@ api.interceptors.response.use(
       }
     }
     if (error.response?.status === 403) {
-      // 403 com permissão nomeada fica na tela; os demais seguem para /acesso-negado.
+      // 403 por fatura em atraso (RF2-51): avisa a tela de bloqueio do AuthGuard
+      // e não navega. 403 com permissão nomeada fica na tela; os demais seguem
+      // para /acesso-negado.
+      const recusaPorCobranca = error.response?.data?.motivo === 'cobranca';
+      if (recusaPorCobranca && typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent(EVENTO_COBRANCA_BLOQUEADA));
+      }
       const permissao = error.response?.data?.permissao;
       const recusaPorPermissao = typeof permissao === 'string' && permissao.length > 0;
-      if (!recusaPorPermissao && typeof window !== 'undefined' && !window.location.pathname.includes('/acesso-negado')) {
+      if (!recusaPorCobranca && !recusaPorPermissao && typeof window !== 'undefined' && !window.location.pathname.includes('/acesso-negado')) {
         window.location.href = '/acesso-negado';
       }
     }

@@ -151,3 +151,73 @@ describe('LeadService.agendar (T31 — contrato RF-51, CA-51)', () => {
     expect(lead.agendado_em).toBe('2026-11-05T18:30:00Z');
   });
 });
+
+// spec cobranca-e-plano-do-cliente RF2-51 (DV-13), BP-T §15.3 "Interceptor".
+describe('Interceptor de resposta: 403 com motivo "cobranca"', () => {
+  const originalLocation = window.location;
+  let eventos: Event[];
+  const ouvir = (e: Event) => eventos.push(e);
+
+  beforeEach(() => {
+    eventos = [];
+    window.addEventListener('unum:cobranca-bloqueada', ouvir);
+    delete (window as any).location;
+    window.location = {
+      ...originalLocation,
+      href: 'http://localhost/kanban',
+      pathname: '/kanban',
+    } as any;
+  });
+
+  afterEach(() => {
+    window.removeEventListener('unum:cobranca-bloqueada', ouvir);
+    delete (window as any).location;
+    window.location = originalLocation as any;
+  });
+
+  it('corpo exato do RF2-06: avisa a tela de bloqueio, não navega para /acesso-negado e continua rejeitando', async () => {
+    const erro = {
+      response: { status: 403, data: { error: 'forbidden', permissao: 'crm.lead.ver', motivo: 'cobranca' } },
+    };
+    await expect(mockResponseInterceptors.error(erro)).rejects.toBe(erro);
+    expect(eventos).toHaveLength(1);
+    expect(eventos[0]).toBeInstanceOf(CustomEvent);
+    expect(eventos[0].type).toBe('unum:cobranca-bloqueada');
+    expect(window.location.href).toBe('http://localhost/kanban');
+  });
+
+  it('motivo "cobranca" sem permissao também não navega para /acesso-negado', async () => {
+    const erro = { response: { status: 403, data: { error: 'forbidden', motivo: 'cobranca' } } };
+    await expect(mockResponseInterceptors.error(erro)).rejects.toBe(erro);
+    expect(eventos).toHaveLength(1);
+    expect(window.location.href).toBe('http://localhost/kanban');
+  });
+
+  it('não regressão: 403 sem permissao e sem motivo continua indo para /acesso-negado, sem aviso de cobrança', async () => {
+    const erro = { response: { status: 403, data: { error: 'forbidden' } } };
+    await expect(mockResponseInterceptors.error(erro)).rejects.toBe(erro);
+    expect(window.location.href).toBe('/acesso-negado');
+    expect(eventos).toHaveLength(0);
+  });
+
+  it('não regressão: 403 com permissao e sem motivo continua na tela, sem aviso de cobrança', async () => {
+    const erro = { response: { status: 403, data: { error: 'forbidden', permissao: 'crm.lead.editar' } } };
+    await expect(mockResponseInterceptors.error(erro)).rejects.toBe(erro);
+    expect(window.location.href).toBe('http://localhost/kanban');
+    expect(eventos).toHaveLength(0);
+  });
+
+  it('só o motivo "cobranca" avisa: outro motivo sem permissao segue para /acesso-negado', async () => {
+    const erro = { response: { status: 403, data: { error: 'forbidden', motivo: 'servico' } } };
+    await expect(mockResponseInterceptors.error(erro)).rejects.toBe(erro);
+    expect(eventos).toHaveLength(0);
+    expect(window.location.href).toBe('/acesso-negado');
+  });
+
+  it('outro status com motivo "cobranca" não avisa', async () => {
+    const erro = { response: { status: 500, data: { error: 'internal_error', motivo: 'cobranca' } } };
+    await expect(mockResponseInterceptors.error(erro)).rejects.toBe(erro);
+    expect(eventos).toHaveLength(0);
+    expect(window.location.href).toBe('http://localhost/kanban');
+  });
+});
