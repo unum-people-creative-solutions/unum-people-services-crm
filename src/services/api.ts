@@ -1,6 +1,7 @@
 import axios from 'axios';
 import { useAuthStore } from '@/store/authStore';
 import { redirectToHostedUI } from '@/lib/pkce';
+import type { ResumoDeCobranca } from '@/types/cobranca';
 
 const api = axios.create({
   baseURL: process.env.NEXT_PUBLIC_API_GATEWAY_URL,
@@ -298,6 +299,14 @@ export interface MeusAcessos {
 export const AcessosService = {
   get: async (tenantId: string): Promise<MeusAcessos> => {
     const response = await api.get(`/me/acessos?tenant_id=${encodeURIComponent(tenantId)}`);
+    return response.data;
+  },
+};
+
+// Resumo de cobrança da empresa (cobranca-e-plano-do-cliente RF2-50; contrato §4.1).
+export const CobrancaService = {
+  resumo: async (tenantId: string): Promise<ResumoDeCobranca> => {
+    const response = await api.get(`/me/cobranca?tenant_id=${encodeURIComponent(tenantId)}`);
     return response.data;
   },
 };
