@@ -23,6 +23,8 @@ interface Props {
   tenantId: string;
   resumo: ResumoDeCobranca | null;
   recarregar: () => Promise<unknown>;
+  // Aviso da UI-4 quando a releitura do resumo falha depois de um 403 (L5).
+  aviso?: React.ReactNode;
 }
 
 const TITULO = "Acesso bloqueado por fatura em atraso";
@@ -39,7 +41,7 @@ function urlDoPortal(tenantId: string): string {
   return `${base}?tenant_id=${encodeURIComponent(tenantId)}`;
 }
 
-export default function TelaDeBloqueioCobranca({ tenantId, resumo, recarregar }: Props) {
+export default function TelaDeBloqueioCobranca({ tenantId, resumo, recarregar, aviso }: Props) {
   const { logout } = useAuthStore();
   const espera = useEsperaDoPagamento(tenantId, resumo, recarregar);
   const tituloRef = useRef<HTMLHeadingElement>(null);
@@ -151,6 +153,8 @@ export default function TelaDeBloqueioCobranca({ tenantId, resumo, recarregar }:
         <h1 ref={tituloRef} tabIndex={-1} className="text-xl font-bold mb-2 text-gray-900 outline-none">
           {TITULO}
         </h1>
+
+        {aviso}
 
         {espera.estado === "parcial" && espera.vencimentoPago && (
           <p className="text-sm font-semibold text-gray-900 mb-2">

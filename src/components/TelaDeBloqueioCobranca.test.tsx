@@ -349,4 +349,23 @@ describe("TelaDeBloqueioCobranca — 403 antes do resumo chegar", () => {
     expect(screen.getByRole("link", { name: "Ir para o Portal do cliente" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Sair e voltar para o login" })).toBeInTheDocument();
   });
+
+  it("o aviso de leitura que o AuthGuard passa aparece na tela, depois do título (L5)", async () => {
+    render(
+      <TelaDeBloqueioCobranca
+        tenantId="t1"
+        resumo={null}
+        recarregar={vi.fn().mockResolvedValue(undefined)}
+        aviso={<div role="alert">Não conseguimos conferir a situação da conta agora.</div>}
+      />
+    );
+    await esperarEmpresas();
+    const tela = screen.getByRole("main");
+    const titulo = screen.getByRole("heading", { level: 1, name: TITULO });
+    const alerta = screen.getByRole("alert");
+    expect(tela).toContainElement(alerta);
+    expect(alerta).toHaveTextContent("Não conseguimos conferir a situação da conta agora.");
+    expect(titulo.compareDocumentPosition(alerta) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(screen.getByRole("link", { name: "Ir para o Portal do cliente" })).toBeInTheDocument();
+  });
 });

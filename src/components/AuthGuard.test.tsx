@@ -39,9 +39,10 @@ vi.mock("@/lib/pkce", () => ({
 // Tela de bloqueio por cobrança (TASK-FE-C05): o conteúdo é testado em
 // TelaDeBloqueioCobranca.test.tsx; aqui só o que o AuthGuard passa a ela.
 vi.mock("./TelaDeBloqueioCobranca", () => ({
-  default: ({ tenantId, resumo, recarregar }: any) => (
+  default: ({ tenantId, resumo, recarregar, aviso }: any) => (
     <main data-testid="tela-de-bloqueio">
       <h1>Acesso bloqueado por fatura em atraso</h1>
+      {aviso}
       <p>{`empresa=${tenantId} situacao=${resumo?.situacao ?? "nenhuma"}`}</p>
       <button type="button" onClick={() => recarregar().catch(() => {})}>
         reler
@@ -394,6 +395,47 @@ describe("AuthGuard — tela de bloqueio por cobrança (RF2-53)", () => {
 
     expect(screen.getByTestId("tela-de-bloqueio")).toBeInTheDocument();
     expect(screen.queryByText(AVISO_UI4)).not.toBeInTheDocument();
+  });
+
+  // L5 do Verifier F2: depois do 403 de cobrança, a releitura que falha deixa a
+  // tela só com o resumo anterior; a tela mostra o aviso da UI-4.
+  it("evento de 403 e a releitura falha: a tela mostra o aviso da UI-4 e \"Tentar de novo\" relê", async () => {
+    renderGuard();
+    await screen.findByTestId("child-content");
+    resumo.mockRejectedValue(new Error("rede"));
+
+    act(() => {
+      window.dispatchEvent(new CustomEvent("unum:cobranca-bloqueada"));
+    });
+
+    const tela = screen.getByTestId("tela-de-bloqueio");
+    const alerta = await screen.findByRole("alert");
+    expect(alerta).toHaveTextContent(AVISO_UI4);
+    expect(tela).toContainElement(alerta);
+    expect(screen.getByRole("heading", { level: 1, name: TITULO })).toBeInTheDocument();
+    expect(screen.queryByTestId("child-content")).not.toBeInTheDocument();
+
+    resumo.mockResolvedValue(resumoBloqueado);
+    fireEvent.click(screen.getByRole("button", { name: "Tentar de novo" }));
+    expect(await screen.findByText("empresa=t1 situacao=bloqueado")).toBeInTheDocument();
+    expect(resumo).toHaveBeenCalledTimes(3);
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+
+  it("evento de 403 antes do primeiro resumo chegar e a leitura falha: a tela mostra o aviso da UI-4", async () => {
+    resumo.mockRejectedValue(new Error("rede"));
+    renderGuard();
+    await screen.findByRole("alert");
+
+    act(() => {
+      window.dispatchEvent(new CustomEvent("unum:cobranca-bloqueada"));
+    });
+
+    const tela = await screen.findByTestId("tela-de-bloqueio");
+    await waitFor(() => expect(resumo).toHaveBeenCalledTimes(2));
+    expect(screen.getByText("empresa=t1 situacao=nenhuma")).toBeInTheDocument();
+    expect(tela).toContainElement(screen.getByRole("alert"));
+    expect(screen.getByRole("alert")).toHaveTextContent(AVISO_UI4);
   });
 
   it("troca de empresa: ACTIVE_TENANT_CHANGE_EVENT relê o resumo da empresa nova e, liberada, mostra o CRM", async () => {

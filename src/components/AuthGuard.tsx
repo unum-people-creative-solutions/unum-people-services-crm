@@ -172,6 +172,25 @@ export default function AuthGuard({ children }: { children: React.ReactNode }) {
     };
   }, [consultaCobranca, lerCobranca]);
 
+  // Aviso da UI-4 (10/11): sobre o CRM, no canto; dentro da tela de bloqueio, no fluxo dela.
+  const avisoDeLeitura = (posicao: string) => (
+    <div
+      role="alert"
+      className={`${posicao} flex items-start gap-3 rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900`}
+    >
+      <p>Não conseguimos conferir a situação da conta agora.</p>
+      <button
+        type="button"
+        onClick={() => {
+          lerCobranca().catch(() => {});
+        }}
+        className="shrink-0 font-semibold underline hover:text-amber-950"
+      >
+        Tentar de novo
+      </button>
+    </div>
+  );
+
   // SUG-8 (/local-review): a busca do Termo de Contratação de Serviço vive
   // num efeito à parte, sem `pathname`/`session`/`router` nas deps (só o que
   // realmente muda o resultado) — evita refazer a chamada de API a cada troca
@@ -209,29 +228,24 @@ export default function AuthGuard({ children }: { children: React.ReactNode }) {
     }
     // Tela no lugar de children e sem o PendingTermsGate (BP-T §8.3).
     if (telaDaEmpresa !== null && telaDaEmpresa === cobranca.tenantId) {
-      return <TelaDeBloqueioCobranca tenantId={telaDaEmpresa} resumo={cobranca.resumo} recarregar={lerCobranca} />;
+      // L5: aberta pelo 403 e a releitura falhou, a tela só tem o resumo anterior
+      // (ou nenhum): mostra o aviso da UI-4. Com o crm bloqueado no resumo, a
+      // falha é da espera do pagamento, que tem o próprio aviso.
+      const semResumoQueBloqueia = !cobranca.resumo?.ferramentas_bloqueadas.includes("crm");
+      return (
+        <TelaDeBloqueioCobranca
+          tenantId={telaDaEmpresa}
+          resumo={cobranca.resumo}
+          recarregar={lerCobranca}
+          aviso={erroCobranca && semResumoQueBloqueia ? avisoDeLeitura("mt-2 mb-2 text-left") : undefined}
+        />
+      );
     }
   }
 
   return (
     <>
-      {consultaCobranca && erroCobranca && (
-        <div
-          role="alert"
-          className="fixed bottom-4 left-4 z-[150] flex max-w-sm items-start gap-3 rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900 shadow-lg"
-        >
-          <p>Não conseguimos conferir a situação da conta agora.</p>
-          <button
-            type="button"
-            onClick={() => {
-              lerCobranca().catch(() => {});
-            }}
-            className="shrink-0 font-semibold underline hover:text-amber-950"
-          >
-            Tentar de novo
-          </button>
-        </div>
-      )}
+      {consultaCobranca && erroCobranca && avisoDeLeitura("fixed bottom-4 left-4 z-[150] max-w-sm shadow-lg")}
       {children}
       {!isPublicPath && isAuthenticated && <PendingTermsGate />}
     </>
