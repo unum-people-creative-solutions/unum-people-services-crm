@@ -444,4 +444,37 @@ describe("AuthGuard — tela de bloqueio por cobrança (RF2-53)", () => {
     await waitFor(() => expect(redirectToHostedUI).toHaveBeenCalled());
     expect(resumo).not.toHaveBeenCalled();
   });
+
+  // DV-14 revista em 11/11/2026 (validation-f2-portal-crm.md, L1): o operador
+  // (grupo GlobalAdmin) não vê a tela de bloqueio; a API também o libera.
+  describe("operador (GlobalAdmin)", () => {
+    beforeEach(() => {
+      (useAuthStore as any).mockReturnValue({
+        isAuthenticated: true,
+        session: { token: "valid-token", email: "operador@unumpeople.com.br", role: "GlobalAdmin" },
+        logout: mockLogout,
+      });
+      resumo.mockResolvedValue(resumoBloqueado);
+    });
+
+    it("com a empresa ativa suspensa vê o app normalmente, sem a tela e sem consultar o resumo", async () => {
+      renderGuard();
+      expect(await screen.findByTestId("child-content")).toBeInTheDocument();
+      expect(screen.getByTestId("pending-terms-gate")).toBeInTheDocument();
+      expect(screen.queryByTestId("tela-de-bloqueio")).not.toBeInTheDocument();
+      expect(screen.queryByRole("heading", { name: TITULO })).not.toBeInTheDocument();
+      expect(resumo).not.toHaveBeenCalled();
+    });
+
+    it("o evento \"unum:cobranca-bloqueada\" não troca o app pela tela", async () => {
+      renderGuard();
+      await screen.findByTestId("child-content");
+      act(() => {
+        window.dispatchEvent(new CustomEvent("unum:cobranca-bloqueada"));
+      });
+      await act(async () => {});
+      expect(screen.getByTestId("child-content")).toBeInTheDocument();
+      expect(screen.queryByTestId("tela-de-bloqueio")).not.toBeInTheDocument();
+    });
+  });
 });

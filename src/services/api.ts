@@ -33,8 +33,10 @@ api.interceptors.response.use(
     if (error.response?.status === 403) {
       // 403 por fatura em atraso (RF2-51): avisa a tela de bloqueio do AuthGuard
       // e não navega. 403 com permissão nomeada fica na tela; os demais seguem
-      // para /acesso-negado.
-      const recusaPorCobranca = error.response?.data?.motivo === 'cobranca';
+      // para /acesso-negado. Para o operador (GlobalAdmin) o motivo "cobranca"
+      // não é bloqueio: segue como os demais 403 (DV-14 revista em 11/11/2026).
+      const operador = useAuthStore.getState().session?.role === 'GlobalAdmin';
+      const recusaPorCobranca = !operador && error.response?.data?.motivo === 'cobranca';
       if (recusaPorCobranca && typeof window !== 'undefined') {
         window.dispatchEvent(new CustomEvent(EVENTO_COBRANCA_BLOQUEADA));
       }

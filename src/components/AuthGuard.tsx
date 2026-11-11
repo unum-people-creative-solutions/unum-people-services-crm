@@ -138,7 +138,10 @@ export default function AuthGuard({ children }: { children: React.ReactNode }) {
     );
   }, []);
 
-  const consultaCobranca = isHydrated && !isPublicPath && isAuthenticated && !!session?.token;
+  // O operador (GlobalAdmin) não vê a tela de bloqueio: a API também o libera
+  // (DV-14 revista em 11/11/2026).
+  const consultaCobranca =
+    isHydrated && !isPublicPath && isAuthenticated && !!session?.token && session.role !== "GlobalAdmin";
 
   useEffect(() => {
     if (!consultaCobranca) return;

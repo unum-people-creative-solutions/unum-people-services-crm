@@ -1,5 +1,6 @@
 import { vi, describe, it, expect, beforeEach, afterEach, beforeAll } from 'vitest';
 import type { LeadAgendamento, MonthSale } from './api';
+import { useAuthStore } from '@/store/authStore';
 
 const mockResponseInterceptors = vi.hoisted(() => ({
   success: null as any,
@@ -212,6 +213,36 @@ describe('Interceptor de resposta: 403 com motivo "cobranca"', () => {
     await expect(mockResponseInterceptors.error(erro)).rejects.toBe(erro);
     expect(eventos).toHaveLength(0);
     expect(window.location.href).toBe('/acesso-negado');
+  });
+
+  // DV-14 revista em 11/11/2026 (L1): para o operador o 403 com motivo
+  // "cobranca" não é bloqueio; o interceptor segue como antes da fase 2.
+  describe('operador (GlobalAdmin)', () => {
+    beforeEach(() => {
+      useAuthStore.setState({
+        isAuthenticated: true,
+        session: { email: 'op@unumpeople.com.br', name: 'Op', tenantId: '', role: 'GlobalAdmin', token: 't' },
+      });
+    });
+    afterEach(() => {
+      useAuthStore.setState({ isAuthenticated: false, session: null });
+    });
+
+    it('motivo "cobranca" sem permissao: não avisa a tela e segue para /acesso-negado como qualquer 403', async () => {
+      const erro = { response: { status: 403, data: { error: 'forbidden', motivo: 'cobranca' } } };
+      await expect(mockResponseInterceptors.error(erro)).rejects.toBe(erro);
+      expect(eventos).toHaveLength(0);
+      expect(window.location.href).toBe('/acesso-negado');
+    });
+
+    it('motivo "cobranca" com permissao: não avisa a tela e fica na tela', async () => {
+      const erro = {
+        response: { status: 403, data: { error: 'forbidden', permissao: 'crm.lead.ver', motivo: 'cobranca' } },
+      };
+      await expect(mockResponseInterceptors.error(erro)).rejects.toBe(erro);
+      expect(eventos).toHaveLength(0);
+      expect(window.location.href).toBe('http://localhost/kanban');
+    });
   });
 
   it('outro status com motivo "cobranca" não avisa', async () => {
