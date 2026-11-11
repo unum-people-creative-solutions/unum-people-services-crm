@@ -1,6 +1,10 @@
 import axios from 'axios';
 import { useAuthStore } from '@/store/authStore';
 import { redirectToHostedUI } from '@/lib/pkce';
+import type { ResumoDeCobranca } from '@/types/cobranca';
+
+// Disparado em window quando a API recusa com 403 { motivo: "cobranca" } (RF2-51).
+export const EVENTO_COBRANCA_BLOQUEADA = 'unum:cobranca-bloqueada';
 
 const api = axios.create({
   baseURL: process.env.NEXT_PUBLIC_API_GATEWAY_URL,
@@ -27,10 +31,18 @@ api.interceptors.response.use(
       }
     }
     if (error.response?.status === 403) {
-      // 403 com permissão nomeada fica na tela; os demais seguem para /acesso-negado.
+      // 403 por fatura em atraso (RF2-51): avisa a tela de bloqueio do AuthGuard
+      // e não navega. 403 com permissão nomeada fica na tela; os demais seguem
+      // para /acesso-negado. Para o operador (GlobalAdmin) o motivo "cobranca"
+      // não é bloqueio: segue como os demais 403 (DV-14 revista em 11/11/2026).
+      const operador = useAuthStore.getState().session?.role === 'GlobalAdmin';
+      const recusaPorCobranca = !operador && error.response?.data?.motivo === 'cobranca';
+      if (recusaPorCobranca && typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent(EVENTO_COBRANCA_BLOQUEADA));
+      }
       const permissao = error.response?.data?.permissao;
       const recusaPorPermissao = typeof permissao === 'string' && permissao.length > 0;
-      if (!recusaPorPermissao && typeof window !== 'undefined' && !window.location.pathname.includes('/acesso-negado')) {
+      if (!recusaPorCobranca && !recusaPorPermissao && typeof window !== 'undefined' && !window.location.pathname.includes('/acesso-negado')) {
         window.location.href = '/acesso-negado';
       }
     }
@@ -298,6 +310,14 @@ export interface MeusAcessos {
 export const AcessosService = {
   get: async (tenantId: string): Promise<MeusAcessos> => {
     const response = await api.get(`/me/acessos?tenant_id=${encodeURIComponent(tenantId)}`);
+    return response.data;
+  },
+};
+
+// Resumo de cobrança da empresa (cobranca-e-plano-do-cliente RF2-50; contrato §4.1).
+export const CobrancaService = {
+  resumo: async (tenantId: string): Promise<ResumoDeCobranca> => {
+    const response = await api.get(`/me/cobranca?tenant_id=${encodeURIComponent(tenantId)}`);
     return response.data;
   },
 };
