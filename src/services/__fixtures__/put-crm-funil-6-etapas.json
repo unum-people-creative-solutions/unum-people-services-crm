@@ -1,0 +1,11 @@
+{
+  "versao": 1,
+  "etapas": [
+    {"id": "NOVO", "nome": "Novos Leads", "papel": "novo", "removivel": false, "movivel": false},
+    {"id": "ATENDIMENTO", "nome": "Em Atendimento", "papel": "comum", "removivel": true, "movivel": true},
+    {"id": "E7K2M9QXA4B", "nome": "Proposta enviada", "papel": "comum", "removivel": true, "movivel": true},
+    {"id": "AGENDADO", "nome": "Agendados", "papel": "agendado", "removivel": false, "movivel": true},
+    {"id": "GANHO", "nome": "Ganho (Conversão)", "papel": "ganho", "removivel": false, "movivel": false},
+    {"id": "PERDIDO", "nome": "Perdido", "papel": "perdido", "removivel": false, "movivel": false}
+  ]
+}
