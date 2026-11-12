@@ -330,6 +330,44 @@ export const FlagsService = {
   },
 };
 
+// Funil da empresa (spec crm-funil-e-atividades-f1, D-F1-6).
+export type PapelEtapa = 'novo' | 'ganho' | 'perdido' | 'agendado' | 'comum';
+
+export interface EtapaFunil {
+  id: string;
+  nome: string;
+  papel: PapelEtapa;
+  removivel: boolean;
+  movivel: boolean;
+}
+
+export interface Funil {
+  versao: number;
+  etapas: EtapaFunil[];
+}
+
+export const FunilService = {
+  ler: async (tenantId?: string): Promise<Funil> => {
+    let url = '/crm/funil';
+    if (tenantId) url += `?tenant_id=${encodeURIComponent(tenantId)}`;
+    const response = await api.get(url);
+    return response.data;
+  },
+  salvar: async (
+    versao: number,
+    etapas: { id?: string; nome: string }[],
+    tenantId?: string,
+  ): Promise<Funil> => {
+    let url = '/crm/funil';
+    if (tenantId) url += `?tenant_id=${encodeURIComponent(tenantId)}`;
+    const response = await api.put(url, {
+      versao,
+      etapas: etapas.map((etapa) => (etapa.id ? { id: etapa.id, nome: etapa.nome } : { nome: etapa.nome })),
+    });
+    return response.data;
+  },
+};
+
 // Rotas do Google Agenda (crm-google-agenda RF-07); empresa pela query tenant_id.
 const qsTenant = (tenantId: string) => `tenant_id=${encodeURIComponent(tenantId)}`;
 

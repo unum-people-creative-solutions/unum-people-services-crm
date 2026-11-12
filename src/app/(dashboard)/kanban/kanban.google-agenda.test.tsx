@@ -10,6 +10,7 @@ import naoConectada from '@/services/__fixtures__/google-agenda-nao-conectada.js
 import leadDoGet from '@/services/__fixtures__/get-leads-lead-google-agenda.json';
 import putOk from '@/services/__fixtures__/put-lead-google-agenda-ok.json';
 import putFalhou from '@/services/__fixtures__/put-lead-google-agenda-falhou.json';
+import funilPadrao from '@/services/__fixtures__/get-crm-funil-padrao.json';
 
 // crm-google-agenda TASK-FE-06: RF-24 (aviso), RF-25 (cartão), RF-26 (pergunta ao sair
 // de "Agendados") e RF-28 / CA-28 (quadro sem a integração). LeadService,
@@ -69,6 +70,7 @@ let integracao: unknown = conectada;
 function rotear() {
   vi.spyOn(api, 'get').mockImplementation(async (url: string) => {
     chamadas.push(`GET ${url}`);
+    if (url.startsWith('/crm/funil')) return { data: funilPadrao };
     if (url.startsWith('/me/acessos')) return { data: acessos(permissoes) };
     if (url.startsWith('/leads?view=sales')) return { data: [] };
     if (url.startsWith('/leads?')) {

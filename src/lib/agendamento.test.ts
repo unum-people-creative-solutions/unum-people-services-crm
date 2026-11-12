@@ -261,3 +261,37 @@ describe('as conversões independem do fuso do processo', () => {
     expect(new Date('2026-11-10T15:00:00Z').getHours()).toBe(12);
   });
 });
+
+// spec: crm-funil-e-atividades-f1 FUN-50 (T22). Com papel, a faixa segue as
+// regras de hoje (24 h laranja, 48 h vermelho) em comum/novo/agendado; ganho
+// e perdido ficam azul. Sem o papel, a chamada antiga não muda.
+describe('FUN-50 — inatividade por papel da etapa', () => {
+  const lead49h = { updated_at: '2026-11-08T14:00:00Z' }; // 49 h antes de agora
+
+  it('papel comum na etapa criada: 49 h → vermelho', () => {
+    expect(corDeInatividade(lead49h, 'E7K2M9QXA4B', agora, 'comum')).toBe('vermelho');
+  });
+
+  it('papel ganho não colore, mesmo na etapa criada', () => {
+    expect(corDeInatividade(lead49h, 'E7K2M9QXA4B', agora, 'ganho')).toBe('azul');
+  });
+
+  it('papel ganho substitui a lista antiga: NOVO parado fica azul', () => {
+    expect(corDeInatividade({ updated_at: '2026-01-01T00:00:00Z' }, 'NOVO', agora, 'ganho')).toBe('azul');
+  });
+
+  it('papel perdido não colore', () => {
+    expect(corDeInatividade({ updated_at: '2026-01-01T00:00:00Z' }, 'ATENDIMENTO', agora, 'perdido')).toBe('azul');
+  });
+
+  it('papel novo e agendado seguem 24 h laranja e 48 h vermelho', () => {
+    expect(corDeInatividade({ updated_at: '2026-11-09T15:00:01Z' }, 'E7K2M9QXA4B', agora, 'novo')).toBe('azul');
+    expect(corDeInatividade({ updated_at: '2026-11-09T15:00:00Z' }, 'E7K2M9QXA4B', agora, 'novo')).toBe('laranja');
+    expect(corDeInatividade(lead49h, 'E7K2M9QXA4B', agora, 'agendado')).toBe('vermelho');
+    expect(corDeInatividade({ updated_at: '2026-11-08T15:00:00Z' }, 'E7K2M9QXA4B', agora, 'comum')).toBe('vermelho');
+  });
+
+  it('sem papel, a etapa criada continua fora da lista antiga e fica azul', () => {
+    expect(corDeInatividade(lead49h, 'E7K2M9QXA4B', agora)).toBe('azul');
+  });
+});
