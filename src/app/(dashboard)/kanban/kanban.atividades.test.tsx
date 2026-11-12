@@ -2,7 +2,7 @@ import { render, screen, waitFor, within, fireEvent, act } from '@testing-librar
 import userEvent from '@testing-library/user-event';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import KanbanPage from './page';
-import { AcessosService, AtividadeService, FunilService, LeadService, type MeusAcessos } from '@/services/api';
+import { AcessosService, AtividadeService, FunilService, GoogleAgendaService, LeadService, type MeusAcessos } from '@/services/api';
 import { AcessosProvider } from '@/contexts/AcessosContext';
 import { useAuthStore } from '@/store/authStore';
 import { useTenant } from '@/contexts/TenantContext';
@@ -38,7 +38,8 @@ vi.mock('@/services/api', async () => {
       listSalesByMonth: vi.fn(),
       agendar: vi.fn(),
     },
-    AtividadeService: { listar: vi.fn(), criar: vi.fn(), concluir: vi.fn(), cancelar: vi.fn() },
+    AtividadeService: { listar: vi.fn(), criar: vi.fn(), concluir: vi.fn(), cancelar: vi.fn(), sincronizar: vi.fn() },
+    GoogleAgendaService: { situacao: vi.fn() },
     InteracaoService: { listar: vi.fn(), criar: vi.fn(), alterar: vi.fn(), apagar: vi.fn() },
     TenantService: { list: vi.fn(), listMyTenants: vi.fn() },
   };
@@ -47,12 +48,13 @@ vi.mock('@/services/api', async () => {
 vi.mock('@/store/authStore', () => ({ useAuthStore: vi.fn() }));
 vi.mock('@/contexts/TenantContext', () => ({ useTenant: vi.fn() }));
 
-const flags = vi.hoisted(() => ({ atividades: true, agendamento: true, interacoes: true }));
+const flags = vi.hoisted(() => ({ atividades: true, agendamento: true, interacoes: true, googleAgenda: false }));
 vi.mock('@/hooks/useFlag', () => ({
   useFlag: (chave: string) => {
     if (chave === 'crm-atividades') return flags.atividades;
     if (chave === 'crm-agendamento') return flags.agendamento;
     if (chave === 'crm-interacoes') return flags.interacoes;
+    if (chave === 'crm-google-agenda') return flags.googleAgenda;
     return false;
   },
 }));
@@ -140,6 +142,7 @@ describe('Atividades no quadro (ATV-06)', () => {
     vi.setSystemTime(new Date('2026-11-12T15:00:00Z'));
     flags.atividades = true;
     flags.agendamento = true;
+    flags.googleAgenda = false;
     flags.interacoes = true;
     nav.params = new URLSearchParams();
     dnd.onDragEnd = null;
@@ -181,6 +184,7 @@ describe('Atividades no quadro (ATV-06)', () => {
       id,
       situacao: 'cancelada',
     }));
+    (GoogleAgendaService.situacao as ReturnType<typeof vi.fn>).mockResolvedValue({ conectada: false });
   });
 
   afterEach(() => {
@@ -415,6 +419,65 @@ describe('Atividades no quadro (ATV-06)', () => {
     expect(within(dialog).queryByRole('button', { name: 'Concluir' })).not.toBeInTheDocument();
     expect(within(dialog).queryByRole('button', { name: 'Cancelar' })).not.toBeInTheDocument();
     expect(within(dialog).queryByRole('button', { name: 'Agendar consulta' })).not.toBeInTheDocument();
+    expect(within(dialog).queryByRole('button', { name: 'Sincronizar' })).not.toBeInTheDocument();
+  });
+
+  it('checkbox marcado com a conta conectada; desabilitado sem conta; a lista sincroniza', async () => {
+    flags.googleAgenda = true;
+    (GoogleAgendaService.situacao as ReturnType<typeof vi.fn>).mockResolvedValue({
+      conectada: true,
+      situacao: 'ativa',
+      email: 'a@b.c',
+      agenda_id: 'primary',
+      agenda_nome: 'Agenda',
+      duracao_padrao_min: 50,
+      conflito: false,
+      lista_agendas: true,
+    });
+    (AtividadeService.sincronizar as ReturnType<typeof vi.fn>).mockResolvedValue({
+      id: TAREFA,
+      tipo: 'tarefa',
+      descricao: 'Enviar proposta',
+      vence_em: '2026-11-12T21:00:00Z',
+      situacao: 'pendente',
+      criada_em: '2026-11-12T15:00:00Z',
+      criada_por: 'user@test.com',
+      google_situacao: 'ok',
+      google_evento_link: 'https://www.google.com/calendar/event?eid=abc',
+    });
+    const user = userEvent.setup();
+    renderKanban();
+    const coluna = await screen.findByRole('region', { name: 'Novos Leads' });
+    await user.click(within(coluna).getByRole('button', { name: 'Editar lead' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Ficha do lead' });
+    await user.click(within(dialog).getByRole('tab', { name: 'Ações' }));
+    const caixa = await within(dialog).findByRole('checkbox', { name: 'Sincronizar com o Google Calendar' });
+    expect(caixa).toBeChecked();
+    expect(caixa).toBeEnabled();
+
+    await user.click(within(dialog).getByRole('tab', { name: 'Atividades' }));
+    const tarefa = await within(dialog).findByRole('article', { name: 'Tarefa: Enviar proposta' });
+    expect(within(tarefa).queryByRole('link', { name: 'Abrir evento' })).not.toBeInTheDocument();
+    await user.click(within(tarefa).getByRole('button', { name: 'Sincronizar' }));
+    await waitFor(() => expect(AtividadeService.sincronizar).toHaveBeenCalledWith('lead-hoje', TAREFA, 'tenant-1'));
+    expect(within(dialog).getByRole('article', { name: 'Tarefa: Enviar proposta' })).toHaveTextContent('Na agenda');
+    expect(within(dialog).getByRole('link', { name: 'Abrir evento' })).toHaveAttribute('href', 'https://www.google.com/calendar/event?eid=abc');
+    expect(within(dialog).queryByRole('button', { name: 'Remover evento' })).not.toBeInTheDocument();
+  });
+
+  it('sem conta Google o checkbox fica desabilitado e avisa para conectar', async () => {
+    flags.googleAgenda = true;
+    (GoogleAgendaService.situacao as ReturnType<typeof vi.fn>).mockResolvedValue({ conectada: false });
+    const user = userEvent.setup();
+    renderKanban();
+    await screen.findByText('Maria Hoje');
+    await user.click(screen.getByRole('button', { name: 'Editar lead' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Ficha do lead' });
+    await user.click(within(dialog).getByRole('tab', { name: 'Ações' }));
+    const caixa = await within(dialog).findByRole('checkbox', { name: 'Sincronizar com o Google Calendar' });
+    expect(caixa).toBeDisabled();
+    expect(caixa).not.toBeChecked();
+    expect(within(dialog).getByRole('link', { name: 'Configurações' })).toHaveAttribute('href', '/settings?aba=google-agenda');
   });
 
   it('falha ao listar as atividades do quadro aparece no alerta', async () => {

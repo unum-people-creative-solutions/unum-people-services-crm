@@ -24,6 +24,7 @@ import {
   AtividadeService,
   InteracaoService,
   LeadService,
+  GoogleAgendaService,
   MENSAGEM_SEM_PERMISSAO,
   mensagemDeErro,
   type Atividade,
@@ -169,8 +170,28 @@ export function FichaDoLead({
 
   const adiarFlag = useFlag("crm-adiar");
   const atividadesFlag = useFlag("crm-atividades");
+  const agendaLigada = useFlag("crm-google-agenda") && useFlag("crm-agendamento");
   const adiarLigado = adiarFlag && atividadesFlag;
   const mostrarAdiar = adiarLigado && podeEditar && papel !== "ganho" && !!onAdiar;
+  const [agendaConectada, setAgendaConectada] = useState(false);
+
+  useEffect(() => {
+    if (!agendaLigada) {
+      setAgendaConectada(false);
+      return;
+    }
+    let vivo = true;
+    GoogleAgendaService.situacao(tenantId)
+      .then((situacao) => {
+        if (vivo) setAgendaConectada(situacao.conectada && situacao.situacao === "ativa");
+      })
+      .catch(() => {
+        if (vivo) setAgendaConectada(false);
+      });
+    return () => {
+      vivo = false;
+    };
+  }, [agendaLigada, tenantId]);
 
   return (
     <div className="fixed inset-0 z-50 flex justify-end bg-black/50 text-gray-900" onClick={onFechar}>
@@ -279,6 +300,8 @@ export function FichaDoLead({
               pedidoConsulta={pedidoConsulta}
               tipoInicial={tipoInicial}
               acaoDoMovimento={acaoDoMovimento}
+              agendaLigada={agendaLigada}
+              agendaConectada={agendaConectada}
               onConcluirMovimento={onConcluirMovimento}
               onMudou={onAtividadeMudou}
               onRegistrada={() => setAba("atividades")}
@@ -292,6 +315,8 @@ export function FichaDoLead({
               tenantId={tenantId}
               podeEditar={podeEditar}
               pedidoConsulta={0}
+              agendaLigada={agendaLigada}
+              agendaConectada={agendaConectada}
               onMudou={onAtividadeMudou}
             />
             <AbaVendas
@@ -796,6 +821,9 @@ function mensagemDaAtividade(err: unknown, aoListar: boolean): string {
   if (response?.status === 403 && typeof data?.permissao === "string" && data.permissao.length > 0) {
     return MENSAGEM_SEM_PERMISSAO;
   }
+  if (data?.error === "agenda_indisponivel") {
+    return "Conecte o Google Agenda em Configurações para sincronizar.";
+  }
   if (data?.error === "atividade_invalida") {
     return typeof data.motivo === "string" && data.motivo.length > 0 ? `Atividade inválida: ${data.motivo}.` : "Atividade inválida.";
   }
@@ -818,6 +846,8 @@ function AbaAtividades({
   pedidoConsulta,
   tipoInicial,
   acaoDoMovimento,
+  agendaLigada = false,
+  agendaConectada = false,
   onConcluirMovimento,
   onMudou,
   onRegistrada,
@@ -832,7 +862,9 @@ function AbaAtividades({
   pedidoConsulta: number;
   tipoInicial?: TipoDeAtividade;
   acaoDoMovimento?: string;
-  onConcluirMovimento?: (corpo: { tipo: string; descricao: string; vence_em: string; duracao_min?: number; lembrar_antes_min?: number }) => Promise<void>;
+  agendaLigada?: boolean;
+  agendaConectada?: boolean;
+  onConcluirMovimento?: (corpo: { tipo: string; descricao: string; vence_em: string; duracao_min?: number; lembrar_antes_min?: number; google_agenda?: boolean }) => Promise<void>;
   onMudou?: () => void;
   onRegistrada?: () => void;
 }) {
@@ -848,7 +880,12 @@ function AbaAtividades({
   const [duracao, setDuracao] = useState("");
   const [lembrete, setLembrete] = useState("");
   const [ocupado, setOcupado] = useState(false);
+  const [sincronizarAgenda, setSincronizarAgenda] = useState(false);
   const base = useId();
+
+  useEffect(() => {
+    if (agendaConectada) setSincronizarAgenda(true);
+  }, [agendaConectada]);
 
   useEffect(() => {
     if (parte !== "formulario") return;
@@ -894,6 +931,7 @@ function AbaAtividades({
       vence_em: paraUTC(data, hora),
       ...(tipo === "consulta" && /^\d+$/.test(duracao) ? { duracao_min: Number(duracao) } : {}),
       ...(lembrete !== "" ? { lembrar_antes_min: Number(lembrete) } : {}),
+      ...(agendaLigada && sincronizarAgenda ? { google_agenda: true } : {}),
     };
     try {
       if (onConcluirMovimento && acaoDoMovimento && tipo === acaoDoMovimento) {
@@ -929,6 +967,22 @@ function AbaAtividades({
         : await AtividadeService.cancelar(leadId, item.id, tenantId);
       setItens((atual) => ordenarPorVencimento(atual.map((outro) => (outro.id === item.id ? atualizada : outro))));
       onMudou?.();
+    } catch (err) {
+      setErro(mensagemDaAtividade(err, false));
+    } finally {
+      enviando.current = false;
+      setOcupado(false);
+    }
+  };
+
+  const sincronizarItem = async (item: Atividade) => {
+    if (!podeEditar || enviando.current || !agendaConectada) return;
+    enviando.current = true;
+    setOcupado(true);
+    setErro(null);
+    try {
+      const atualizada = await AtividadeService.sincronizar(leadId, item.id, tenantId);
+      setItens((atual) => ordenarPorVencimento(atual.map((outro) => (outro.id === item.id ? atualizada : outro))));
     } catch (err) {
       setErro(mensagemDaAtividade(err, false));
     } finally {
@@ -1008,6 +1062,24 @@ function AbaAtividades({
               {LEMBRETES_DE_ATIVIDADE.map((opcao) => <option key={opcao.rotulo} value={opcao.valor}>{opcao.rotulo}</option>)}
             </select>
           </div>
+          {agendaLigada && (
+            <div>
+              <label className="flex items-center gap-2 text-sm font-bold text-gray-800">
+                <input
+                  type="checkbox"
+                  checked={agendaConectada && sincronizarAgenda}
+                  disabled={!agendaConectada || ocupado}
+                  onChange={(evento) => setSincronizarAgenda(evento.target.checked)}
+                />
+                Sincronizar com o Google Calendar
+              </label>
+              {!agendaConectada && (
+                <p className="mt-1 text-xs text-gray-600">
+                  Conecte o Google Agenda em <a href="/settings?aba=google-agenda" className="font-bold text-brand-blue">Configurações</a> para sincronizar.
+                </p>
+              )}
+            </div>
+          )}
           <button type="submit" disabled={ocupado} className="w-full rounded-md bg-brand-blue p-3 font-bold text-white disabled:cursor-not-allowed disabled:opacity-50">
             Registrar atividade
           </button>
@@ -1029,6 +1101,22 @@ function AbaAtividades({
               <p className="mt-1 text-xs font-bold text-gray-500">{ROTULO_DA_SITUACAO[item.situacao] ?? item.situacao}</p>
               {lembreteItem && <p className="text-xs text-gray-500">{lembreteItem}</p>}
               {item.duracao_min !== undefined && <p className="text-xs text-gray-500">{item.duracao_min} min</p>}
+              {item.google_situacao === "ok" && item.google_evento_link && (
+                <p className="mt-1 text-xs font-bold text-gray-700">
+                  Na agenda{" "}
+                  <a href={item.google_evento_link} className="text-brand-blue">Abrir evento</a>
+                </p>
+              )}
+              {agendaLigada && podeEditar && !(item.google_situacao === "ok" && item.google_evento_link) && (
+                <div className="mt-3">
+                  <button type="button" onClick={() => sincronizarItem(item)} disabled={!agendaConectada || ocupado} className="rounded-md bg-gray-100 px-3 py-1.5 text-sm font-bold disabled:opacity-50">Sincronizar</button>
+                  {!agendaConectada && (
+                    <p className="mt-1 text-xs text-gray-600">
+                      Conecte o Google Agenda em <a href="/settings?aba=google-agenda" className="font-bold text-brand-blue">Configurações</a> para sincronizar.
+                    </p>
+                  )}
+                </div>
+              )}
               {podeEditar && item.situacao === "pendente" && (
                 <div className="mt-3 flex gap-2">
                   <button type="button" onClick={() => mudarSituacao(item, "concluir")} disabled={ocupado} className="rounded-md bg-brand-blue px-3 py-1.5 text-sm font-bold text-white disabled:opacity-50">Concluir</button>
