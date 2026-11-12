@@ -96,7 +96,7 @@ const LEITOR: MeusAcessos = {
 const CONSULTA = '11111111-1111-4111-8111-111111111111';
 const TAREFA = '22222222-2222-4222-8222-222222222222';
 
-function lead(parcial: { id: string; nome: string; status: string; updated_at?: string }) {
+function lead(parcial: { id: string; nome: string; status: string; updated_at?: string; sales?: { id: string; valor: number; data: string }[] }) {
   return {
     telefone: '11988887777',
     email: 'maria@exemplo.com',
@@ -440,6 +440,33 @@ describe('Atividades no quadro (ATV-06)', () => {
     await user.click(screen.getByRole('button', { name: 'Agendados' }));
     expect(screen.queryByRole('dialog', { name: 'Agendar horário' })).not.toBeInTheDocument();
     await waitFor(() => expect(LeadService.updateStatus).toHaveBeenCalledTimes(2));
+  });
+
+  it('a aba Dados não mostra venda; a lista fica na aba Vendas', async () => {
+    quadro = {
+      NOVO: [lead({
+        id: 'lead-hoje',
+        nome: 'Maria Hoje',
+        status: 'NOVO',
+        sales: [{ id: 's1', valor: 150, data: '2026-11-01T00:00:00Z' }],
+      })],
+    };
+    const user = userEvent.setup();
+    renderKanban();
+    await screen.findByText('Maria Hoje');
+    const coluna = screen.getByRole('region', { name: 'Novos Leads' });
+    await user.click(within(coluna).getByRole('button', { name: 'Editar lead' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Ficha do lead' });
+
+    const dados = within(dialog).getByRole('tabpanel', { name: 'Dados' });
+    expect(within(dados).queryByRole('heading', { name: 'Vendas do mês' })).not.toBeInTheDocument();
+    expect(within(dados).queryByText(/150/)).not.toBeInTheDocument();
+    expect(within(dados).queryByRole('button', { name: 'Registrar venda' })).not.toBeInTheDocument();
+
+    await user.click(within(dialog).getByRole('tab', { name: 'Vendas' }));
+    expect(within(dialog).getByRole('article', { name: /Venda R\$\s*150,00/ })).toBeInTheDocument();
+    expect(within(dialog).getByRole('form', { name: 'Nova venda' })).toBeInTheDocument();
+    expect(within(dialog).getByRole('button', { name: 'Registrar venda' })).toBeInTheDocument();
   });
 
   it('coluna sem ação só muda o cartão e não abre a ficha', async () => {
