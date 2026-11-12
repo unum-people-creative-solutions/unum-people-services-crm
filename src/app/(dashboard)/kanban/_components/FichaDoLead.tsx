@@ -317,6 +317,7 @@ export function FichaDoLead({
               pedidoConsulta={0}
               agendaLigada={agendaLigada}
               agendaConectada={agendaConectada}
+              onAgendaIndisponivel={() => setAgendaConectada(false)}
               onMudou={onAtividadeMudou}
             />
             <AbaVendas
@@ -848,6 +849,7 @@ function AbaAtividades({
   acaoDoMovimento,
   agendaLigada = false,
   agendaConectada = false,
+  onAgendaIndisponivel,
   onConcluirMovimento,
   onMudou,
   onRegistrada,
@@ -864,6 +866,7 @@ function AbaAtividades({
   acaoDoMovimento?: string;
   agendaLigada?: boolean;
   agendaConectada?: boolean;
+  onAgendaIndisponivel?: () => void;
   onConcluirMovimento?: (corpo: { tipo: string; descricao: string; vence_em: string; duracao_min?: number; lembrar_antes_min?: number; google_agenda?: boolean }) => Promise<void>;
   onMudou?: () => void;
   onRegistrada?: () => void;
@@ -984,6 +987,8 @@ function AbaAtividades({
       const atualizada = await AtividadeService.sincronizar(leadId, item.id, tenantId);
       setItens((atual) => ordenarPorVencimento(atual.map((outro) => (outro.id === item.id ? atualizada : outro))));
     } catch (err) {
+      const data = (err as { response?: { data?: { error?: string } } } | null)?.response?.data;
+      if (data?.error === "agenda_indisponivel") onAgendaIndisponivel?.();
       setErro(mensagemDaAtividade(err, false));
     } finally {
       enviando.current = false;

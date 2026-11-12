@@ -194,6 +194,7 @@ describe('Adiar o lead (ADI-01, ADI-03, ADI-05)', () => {
     expect(filtro).toHaveAttribute('aria-pressed', 'false');
     await user.click(filtro);
 
+    expect(screen.getByRole('button', { name: 'Filtros, 1' })).toHaveAttribute('aria-pressed', 'true');
     expect(screen.getByRole('button', { name: 'Adiados (1)' })).toHaveAttribute('aria-pressed', 'true');
     expect(within(coluna).getByText('Maria Nova')).toBeInTheDocument();
     await user.click(within(coluna).getByRole('button', { name: 'Retomar agora' }));
@@ -396,5 +397,41 @@ describe('Adiar o lead (ADI-01, ADI-03, ADI-05)', () => {
     await user.click(within(coluna).getByRole('button', { name: 'Editar lead' }));
     const ficha = await screen.findByRole('dialog', { name: 'Ficha do lead' });
     expect(within(ficha).queryByRole('button', { name: 'Adiar' })).not.toBeInTheDocument();
+  });
+
+  it('Hoje e Adiados juntos mostram só quem passa nos dois e o header marca 2', async () => {
+    quadro = {
+      NOVO: [
+        lead({ id: 'passa', nome: 'Passa Nos Dois', status: 'NOVO' }),
+        lead({ id: 'so-adiado', nome: 'So Adiado', status: 'NOVO' }),
+        lead({ id: 'so-hoje', nome: 'So Hoje', status: 'NOVO' }),
+      ],
+      GANHO: [lead({ id: 'ganho', nome: 'Ganho Adiado', status: 'GANHO' })],
+    };
+    porLead = {
+      passa: { itens: [retomar('r-passa', '2026-11-12T18:00:00Z')] },
+      'so-adiado': { itens: [retomar('r-futuro', '2026-11-20T15:00:00Z')] },
+      'so-hoje': { itens: [{ ...retomar('r-hoje', '2026-11-12T18:00:00Z'), tipo: 'ligar' }] },
+      ganho: { itens: [retomar('r-ganho', '2026-11-12T18:00:00Z')] },
+    };
+    const user = userEvent.setup();
+    renderKanban();
+    const coluna = await screen.findByRole('region', { name: 'Novos Leads' });
+    await waitFor(() => expect(within(coluna).queryByText('Passa Nos Dois')).not.toBeInTheDocument());
+    expect(within(coluna).getByText('So Hoje')).toBeInTheDocument();
+
+    await abrirFiltros(user);
+    await user.click(screen.getByRole('button', { name: 'Adiados (3)' }));
+    expect(screen.getByRole('button', { name: 'Filtros, 1' })).toHaveAttribute('aria-pressed', 'true');
+    expect(within(coluna).getByText('Passa Nos Dois')).toBeInTheDocument();
+    expect(within(coluna).getByText('So Adiado')).toBeInTheDocument();
+    expect(within(coluna).queryByText('So Hoje')).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Hoje' }));
+    expect(screen.getByRole('button', { name: 'Filtros, 2' })).toHaveAttribute('aria-pressed', 'true');
+    expect(within(coluna).getByText('Passa Nos Dois')).toBeInTheDocument();
+    expect(within(coluna).queryByText('So Adiado')).not.toBeInTheDocument();
+    expect(within(coluna).queryByText('So Hoje')).not.toBeInTheDocument();
+    expect(within(screen.getByRole('region', { name: 'Ganho (Conversão)' })).queryByText('Ganho Adiado')).not.toBeInTheDocument();
   });
 });

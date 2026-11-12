@@ -426,6 +426,69 @@ describe('Atividades no quadro (ATV-06)', () => {
     expect(within(dialog).queryByRole('button', { name: 'Sincronizar' })).not.toBeInTheDocument();
   });
 
+  it('o leitor vê Na agenda e o link, sem Sincronizar', async () => {
+    (AcessosService.get as ReturnType<typeof vi.fn>).mockResolvedValue(LEITOR);
+    porLead = {
+      'lead-hoje': {
+        itens: [{
+          ...atividades.itens[0],
+          google_situacao: 'ok',
+          google_evento_link: 'https://www.google.com/calendar/event?eid=abc',
+        }],
+      },
+    };
+    const user = userEvent.setup();
+    renderKanban();
+    const coluna = await screen.findByRole('region', { name: 'Novos Leads' });
+    await within(coluna).findByText('Maria Hoje');
+    await user.click(within(coluna).getByRole('button', { name: 'Ver lead' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Ficha do lead' });
+    await user.click(within(dialog).getByRole('tab', { name: 'Atividades' }));
+    const consulta = await within(dialog).findByRole('article', { name: 'Consulta: Retorno da avaliação' });
+    expect(consulta).toHaveTextContent('Na agenda');
+    expect(within(consulta).getByRole('link', { name: 'Abrir evento' })).toHaveAttribute('href', 'https://www.google.com/calendar/event?eid=abc');
+    expect(within(consulta).queryByRole('button', { name: 'Sincronizar' })).not.toBeInTheDocument();
+  });
+
+  it('caixa desmarcada grava a atividade sem google_agenda', async () => {
+    flags.googleAgenda = true;
+    (GoogleAgendaService.situacao as ReturnType<typeof vi.fn>).mockResolvedValue({
+      conectada: true, situacao: 'ativa', email: 'a@b.c', agenda_id: 'primary', agenda_nome: 'Agenda', duracao_padrao_min: 50, conflito: false, lista_agendas: true,
+    });
+    const user = userEvent.setup();
+    renderKanban();
+    await user.click(await screen.findByRole('button', { name: 'Editar lead' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Ficha do lead' });
+    await user.click(within(dialog).getByRole('tab', { name: 'Ações' }));
+    const caixa = await within(dialog).findByRole('checkbox', { name: 'Sincronizar com o Google Calendar' });
+    await user.click(caixa);
+    expect(caixa).not.toBeChecked();
+    const form = within(dialog).getByRole('form', { name: 'Nova atividade' });
+    fireEvent.change(within(form).getByLabelText('Data'), { target: { value: '2026-11-12' } });
+    fireEvent.change(within(form).getByLabelText('Hora'), { target: { value: '15:30' } });
+    await user.click(within(form).getByRole('button', { name: 'Registrar atividade' }));
+    await waitFor(() => expect(AtividadeService.criar).toHaveBeenCalled());
+    expect((AtividadeService.criar as ReturnType<typeof vi.fn>).mock.calls.at(-1)?.[2].google_agenda).toBeUndefined();
+  });
+
+  it('409 da agenda desabilita Sincronizar e mostra o aviso de conectar', async () => {
+    flags.googleAgenda = true;
+    (GoogleAgendaService.situacao as ReturnType<typeof vi.fn>).mockResolvedValue({
+      conectada: true, situacao: 'ativa', email: 'a@b.c', agenda_id: 'primary', agenda_nome: 'Agenda', duracao_padrao_min: 50, conflito: false, lista_agendas: true,
+    });
+    (AtividadeService.sincronizar as ReturnType<typeof vi.fn>).mockRejectedValue(erroApi(409, { error: 'agenda_indisponivel' }));
+    const user = userEvent.setup();
+    renderKanban();
+    await user.click(await screen.findByRole('button', { name: 'Editar lead' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Ficha do lead' });
+    await user.click(within(dialog).getByRole('tab', { name: 'Atividades' }));
+    const tarefa = await within(dialog).findByRole('article', { name: 'Tarefa: Enviar proposta' });
+    await user.click(within(tarefa).getByRole('button', { name: 'Sincronizar' }));
+    expect(await within(dialog).findByRole('alert')).toHaveTextContent('Conecte o Google Agenda em Configurações para sincronizar.');
+    expect(within(tarefa).getByRole('button', { name: 'Sincronizar' })).toBeDisabled();
+    expect(within(tarefa).getByRole('link', { name: 'Configurações' })).toHaveAttribute('href', '/settings?aba=google-agenda');
+  });
+
   it('checkbox marcado com a conta conectada; desabilitado sem conta; a lista sincroniza', async () => {
     flags.googleAgenda = true;
     (GoogleAgendaService.situacao as ReturnType<typeof vi.fn>).mockResolvedValue({

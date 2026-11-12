@@ -1040,11 +1040,14 @@ function KanbanContent() {
   const leadsDaColuna = (col: ColunaQuadro) => {
     const todos = boardData[col.id] || [];
     if (editando) return todos;
-    if (adiarLigado && soAdiados) return todos.filter((lead: { id: string }) => leadEstaAdiado(lead));
-    const visiveis = adiarLigado ? todos.filter((lead: { id: string }) => !leadEstaAdiado(lead)) : todos;
-    if (!atividadesLigadas || !soHoje) return visiveis;
+    const base = adiarLigado && soAdiados
+      ? todos.filter((lead: { id: string }) => leadEstaAdiado(lead))
+      : adiarLigado
+        ? todos.filter((lead: { id: string }) => !leadEstaAdiado(lead))
+        : todos;
+    if (!atividadesLigadas || !soHoje) return base;
     if (col.papel === "ganho" || col.papel === "perdido") return [];
-    return visiveis.filter((lead: any) => temPendenteHoje(atividadesPorLead[lead.id], agoraQuadro));
+    return base.filter((lead: any) => temPendenteHoje(atividadesPorLead[lead.id], agoraQuadro));
   };
 
   return (
