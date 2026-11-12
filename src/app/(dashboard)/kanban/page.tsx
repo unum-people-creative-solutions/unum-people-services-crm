@@ -1007,6 +1007,7 @@ function KanbanContent() {
         onRefresh={() => loadLeads()}
         onNewLead={pode("crm.lead.criar") ? () => setIsModalOpen(true) : undefined}
         onNewSale={podeEditar ? () => setIsNewSaleModalOpen(true) : undefined}
+        onEditarFunil={podeEditarFunil && funil && !erroFunil && !editando ? entrarNaEdicao : undefined}
       >
         <div className="hidden md:flex items-center gap-3">
 
@@ -1129,8 +1130,7 @@ function KanbanContent() {
           </div>
         )}
 
-        {podeEditarFunil && funil && !erroFunil && (
-          editando ? (
+        {podeEditarFunil && funil && !erroFunil && editando && (
             <BarraDoEditor
               erro={erroEditor}
               salvando={salvandoFunil}
@@ -1138,11 +1138,6 @@ function KanbanContent() {
               onCancelar={cancelarEdicao}
               onRecarregar={recarregarConflito}
             />
-          ) : (
-            <button type="button" onClick={entrarNaEdicao} className="mb-4 mx-4 md:mx-0 rounded-lg bg-white px-4 py-2 text-sm font-bold text-gray-800 border border-gray-200">
-              Editar funil
-            </button>
-          )
         )}
         {colunaSumiu && (
           <div role="alert" className="mx-4 md:mx-0 mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-800">
