@@ -44,6 +44,11 @@ describe('ID do tenant na query', () => {
     ['LeadService.searchCustomers', () => api.LeadService.searchCustomers('ana', id)],
     ['LeadService.addSale', () => api.LeadService.addSale('l1', 10, '2026-10-16', id)],
     ['LeadService.delete', () => api.LeadService.delete('l1', id)],
+    ['InteracaoService.listar', () => api.InteracaoService.listar('l1', id)],
+    ['InteracaoService.listar com cursor', () => api.InteracaoService.listar('l1', id, 'abc')],
+    ['InteracaoService.criar', () => api.InteracaoService.criar('l1', id, { tipo: 'nota', texto: 'oi' })],
+    ['InteracaoService.alterar', () => api.InteracaoService.alterar('l1', 'i1', id, { texto: 'oi' })],
+    ['InteracaoService.apagar', () => api.InteracaoService.apagar('l1', 'i1', id)],
     ['TermsService.getStatus', () => api.TermsService.getStatus(id)],
     // riscos-acesso-empresa RF-08: a equipe age na empresa selecionada.
     ['NotificationService.subscribe', () => notificacoes.NotificationService.subscribe(subscription, id)],

@@ -194,6 +194,13 @@ describe('Interceptor de resposta: 403 com motivo "cobranca"', () => {
     expect(window.location.href).toBe('http://localhost/kanban');
   });
 
+  it('403 nao_e_o_autor fica na tela para o alerta da ficha', async () => {
+    const erro = { response: { status: 403, data: { error: 'nao_e_o_autor' } } };
+    await expect(mockResponseInterceptors.error(erro)).rejects.toBe(erro);
+    expect(window.location.href).toBe('http://localhost/kanban');
+    expect(eventos).toHaveLength(0);
+  });
+
   it('não regressão: 403 sem permissao e sem motivo continua indo para /acesso-negado, sem aviso de cobrança', async () => {
     const erro = { response: { status: 403, data: { error: 'forbidden' } } };
     await expect(mockResponseInterceptors.error(erro)).rejects.toBe(erro);

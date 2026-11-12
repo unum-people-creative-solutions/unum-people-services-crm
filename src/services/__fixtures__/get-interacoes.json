@@ -1,0 +1,55 @@
+{
+  "itens": [
+    {
+      "id": "8c1e0a2b-4d5f-4a6b-8c7d-9e0f1a2b3c4d",
+      "tipo": "ligacao",
+      "texto": "Ligou e pediu retorno amanhã.",
+      "ocorrida_em": "2026-11-11T18:30:00Z",
+      "autor_email": "user@test.com",
+      "autor_nome": "Ana Lima",
+      "criada_em": "2026-11-11T18:35:00Z",
+      "editada_em": ""
+    },
+    {
+      "id": "1a2b3c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d",
+      "tipo": "nota",
+      "texto": "Anotação anterior.",
+      "ocorrida_em": "2026-11-10T15:00:00Z",
+      "autor_email": "outro@exemplo.com",
+      "autor_nome": "Bruno Costa",
+      "criada_em": "2026-11-10T15:00:00Z",
+      "editada_em": ""
+    },
+    {
+      "id": "aaaa1111-2222-4333-8444-555566667777",
+      "tipo": "whatsapp",
+      "texto": "Mensagem migrada.",
+      "ocorrida_em": "2026-11-09T12:00:00Z",
+      "autor_email": "",
+      "autor_nome": "Anotações anteriores",
+      "criada_em": "2026-11-09T12:00:00Z",
+      "editada_em": ""
+    },
+    {
+      "id": "bbbb2222-3333-4444-8555-666677778888",
+      "tipo": "email",
+      "texto": "Enviou a proposta.",
+      "ocorrida_em": "2026-11-08T21:00:00Z",
+      "autor_email": "carla@exemplo.com",
+      "autor_nome": "Carla Dias",
+      "criada_em": "2026-11-08T21:00:00Z",
+      "editada_em": "2026-11-08T22:00:00Z"
+    },
+    {
+      "id": "cccc3333-4444-4555-8666-777788889999",
+      "tipo": "reuniao",
+      "texto": "Reunião de alinhamento.",
+      "ocorrida_em": "2026-11-07T13:00:00Z",
+      "autor_email": "diego@exemplo.com",
+      "autor_nome": "Diego Alves",
+      "criada_em": "2026-11-07T13:00:00Z",
+      "editada_em": ""
+    }
+  ],
+  "cursor": ""
+}

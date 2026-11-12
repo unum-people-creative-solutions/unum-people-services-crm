@@ -3,6 +3,8 @@
 // Custom Service Worker for Push Notifications
 // This file will be compiled by next-pwa
 
+import { urlParaAbrir } from '../lib/destinoDaNotificacao';
+
 const swSelf = (self as unknown) as ServiceWorkerGlobalScope;
 
 swSelf.addEventListener('push', (event) => {
@@ -13,10 +15,9 @@ swSelf.addEventListener('push', (event) => {
     return;
   }
 
-  let data = {
+  let data: { title: string; body: string; url?: string } = {
     title: 'Nova Notificação',
     body: 'Você recebeu uma atualização no Unum CRM.',
-    url: '/'
   };
 
   try {
@@ -36,9 +37,7 @@ swSelf.addEventListener('push', (event) => {
     body: data.body,
     icon: '/icons/icon-192x192.png',
     badge: '/icons/badge-96x96.png',
-    data: {
-      url: data.url || '/'
-    }
+    data: typeof data.url === 'string' && data.url.length > 0 ? { url: data.url } : {},
   };
 
   event.waitUntil(
@@ -49,25 +48,23 @@ swSelf.addEventListener('push', (event) => {
 });
 
 swSelf.addEventListener('notificationclick', (event) => {
-  console.log('[SW] Notificação clicada. Redirecionando para /kanban');
   event.notification.close();
 
-  // Forçamos o destino para /kanban conforme solicitado
-  const urlToOpen = new URL('/kanban', swSelf.location.origin).href;
+  // D-F3-5: data.url quando a notificação traz; sem url, /kanban.
+  const urlToOpen = urlParaAbrir(event.notification.data, swSelf.location.origin);
+  console.log('[SW] Notificação clicada. Abrindo', urlToOpen);
 
   event.waitUntil(
     swSelf.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clientList) => {
-      // 1. Tenta encontrar qualquer janela do domínio e navegar nela para /kanban
       for (const client of clientList) {
         if (client.url.startsWith(swSelf.location.origin) && 'navigate' in client) {
-          console.log('[SW] Janela encontrada. Navegando para /kanban');
+          console.log('[SW] Janela encontrada. Navegando para', urlToOpen);
           return client.navigate(urlToOpen).then((c) => c?.focus());
         }
       }
 
-      // 2. Se não houver nenhuma janela, abre uma nova em /kanban
       if (swSelf.clients.openWindow) {
-        console.log('[SW] Nenhuma janela. Abrindo /kanban');
+        console.log('[SW] Nenhuma janela. Abrindo', urlToOpen);
         return swSelf.clients.openWindow(urlToOpen);
       }
     })

@@ -95,7 +95,7 @@ export function BotaoRemover({ quantidade, onRemover }: { quantidade: number; on
       disabled={bloqueado}
       aria-label={texto}
       onClick={onRemover}
-      className="text-left text-xs font-bold text-red-700 disabled:text-gray-500"
+      className="self-start w-fit text-left text-xs font-bold text-red-700 disabled:text-gray-500"
     >
       {texto}
     </button>
@@ -135,7 +135,7 @@ export function ColunaArrastavel({
   return (
     <Draggable draggableId={chave} index={indice} isDragDisabled={!arrastavel}>
       {(provided) => (
-        <div ref={provided.innerRef} {...provided.draggableProps} {...provided.dragHandleProps}>
+        <div ref={provided.innerRef} {...provided.draggableProps} {...provided.dragHandleProps} className="h-full">
           {children}
         </div>
       )}
