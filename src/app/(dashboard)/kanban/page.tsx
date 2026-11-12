@@ -8,6 +8,7 @@ import { useFunil } from "@/hooks/useFunil";
 import { adicionar, iniciar, mover, moverParaDireita, moverParaEsquerda, paraPedido, podeAdicionar, remover, renomear, type Rascunho } from "@/lib/editorDoFunil";
 import { BarraDoEditor, BotaoAdicionar, BotaoRemover, ColunaArrastavel, FaixaDoFunil, mensagemDeErroDoFunil, NomeDaColuna, SetasDaColuna } from "./_components/EditorDoFunil";
 import { FichaDoLead } from "./_components/FichaDoLead";
+import { AdiarLead, type PedidoDeAdiar } from "./_components/AdiarLead";
 import { useAuthStore } from "@/store/authStore";
 import { useTenant } from "@/contexts/TenantContext";
 import { useAcessosDoCRM } from "@/contexts/AcessosContext";
@@ -32,6 +33,7 @@ import { StatusAdsDaVenda } from "@/components/StatusAdsDaVenda";
 import { AgendamentoModal } from "@/components/AgendamentoModal";
 import { corDeInatividade, formatarAgendamento, linkDeLembrete, mensagemDeLembrete, ordenarAgendados, referenciaDeInatividade } from "@/lib/agendamento";
 import { proximaPendente, rotuloDaAtividade, temPendenteHoje, temPendenteNoFuturo } from "@/lib/atividades";
+import { mensagemDoAdiar, retomarPendenteNoFuturo } from "@/lib/adiar";
 
 type LeadFormValues = z.infer<typeof leadSchema>;
 
@@ -138,6 +140,7 @@ function KanbanContent() {
   const interacoesLigadas = useFlag("crm-interacoes");
   // ATV-06: desligada, o quadro e o modal de agendamento de hoje permanecem.
   const atividadesLigadas = useFlag("crm-atividades");
+  const adiarLigado = useFlag("crm-adiar") && atividadesLigadas;
 
   // Colunas vêm do funil da empresa (FUN-02). Sem funil, o quadro não inventa o padrão (FUN-03).
   const { funil, erro: erroFunil, recarregar, substituir } = useFunil();
@@ -204,6 +207,14 @@ function KanbanContent() {
   const [atividadesPorLead, setAtividadesPorLead] = useState<Record<string, Atividade[]>>({});
   const [erroAtividades, setErroAtividades] = useState<string | null>(null);
   const [soHoje, setSoHoje] = useState(false);
+  const [soAdiados, setSoAdiados] = useState(false);
+  const [adiarAlvo, setAdiarAlvo] = useState<{ id: string } | null>(null);
+  const [erroAdiar, setErroAdiar] = useState<string | null>(null);
+  const [enviandoAdiar, setEnviandoAdiar] = useState(false);
+  const enviandoAdiarRef = useRef(false);
+  const [erroRetomar, setErroRetomar] = useState<string | null>(null);
+  const [retomandoId, setRetomandoId] = useState<string | null>(null);
+  const retomandoRef = useRef(false);
   const [versaoAtividades, setVersaoAtividades] = useState(0);
   const pedidoAtividades = useRef(0);
   const empresaDaFicha = useRef(activeTenantId);
@@ -927,12 +938,67 @@ function KanbanContent() {
     await executeMove(draggableId, destination.droppableId);
   };
 
+  const abrirAdiar = (lead: { id: string }) => {
+    setErroAdiar(null);
+    setAdiarAlvo({ id: lead.id });
+  };
+
+  const confirmarAdiar = async (pedido: PedidoDeAdiar) => {
+    if (!adiarAlvo || enviandoAdiarRef.current) return;
+    const leadId = adiarAlvo.id;
+    enviandoAdiarRef.current = true;
+    setEnviandoAdiar(true);
+    setErroAdiar(null);
+    try {
+      const criada = await LeadService.adiar(leadId, activeTenantId || undefined, pedido);
+      setAtividadesPorLead((atual) => {
+        const itens = atual[leadId] ?? [];
+        const restantes = itens.filter((item) => item.id !== criada.id && !(item.tipo === "retomar" && item.situacao === "pendente"));
+        return { ...atual, [leadId]: [criada, ...restantes] };
+      });
+      setAdiarAlvo(null);
+    } catch (err) {
+      console.error(err);
+      setErroAdiar(mensagemDoAdiar(err));
+    } finally {
+      enviandoAdiarRef.current = false;
+      setEnviandoAdiar(false);
+    }
+  };
+
+  const retomarAgora = async (leadId: string, atividadeId: string) => {
+    if (retomandoRef.current) return;
+    retomandoRef.current = true;
+    setRetomandoId(atividadeId);
+    setErroRetomar(null);
+    try {
+      const atualizada = await AtividadeService.concluir(leadId, atividadeId, activeTenantId || undefined);
+      setAtividadesPorLead((atual) => ({
+        ...atual,
+        [leadId]: (atual[leadId] ?? []).map((item) => (item.id === atividadeId ? atualizada : item)),
+      }));
+    } catch (err) {
+      console.error(err);
+      setErroRetomar("Não foi possível retomar. Tente de novo.");
+    } finally {
+      retomandoRef.current = false;
+      setRetomandoId(null);
+    }
+  };
+
   const agoraQuadro = new Date();
+  const leadEstaAdiado = (lead: { id: string }) => retomarPendenteNoFuturo(atividadesPorLead[lead.id], agoraQuadro) !== null;
+  const quantidadeAdiados = adiarLigado
+    ? (Object.values(boardData).flat() as { id?: string }[]).filter((lead) => lead?.id && leadEstaAdiado({ id: lead.id })).length
+    : 0;
   const leadsDaColuna = (col: ColunaQuadro) => {
     const todos = boardData[col.id] || [];
-    if (!atividadesLigadas || !soHoje || editando) return todos;
+    if (editando) return todos;
+    if (adiarLigado && soAdiados) return todos.filter((lead: { id: string }) => leadEstaAdiado(lead));
+    const visiveis = adiarLigado ? todos.filter((lead: { id: string }) => !leadEstaAdiado(lead)) : todos;
+    if (!atividadesLigadas || !soHoje) return visiveis;
     if (col.papel === "ganho" || col.papel === "perdido") return [];
-    return todos.filter((lead: any) => temPendenteHoje(atividadesPorLead[lead.id], agoraQuadro));
+    return visiveis.filter((lead: any) => temPendenteHoje(atividadesPorLead[lead.id], agoraQuadro));
   };
 
   return (
@@ -1034,6 +1100,11 @@ function KanbanContent() {
             {erroAtividades}
           </p>
         )}
+        {erroRetomar && (
+          <p role="alert" className="mx-4 md:mx-0 mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-800">
+            {erroRetomar}
+          </p>
+        )}
         {avisoAgendaFalhou && (
           <div role="alert" className="mb-4 mx-4 md:mx-0 flex items-start justify-between gap-3 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-medium text-amber-800">
             <p>Agendado no CRM, mas não foi possível pôr na sua agenda.</p>
@@ -1088,7 +1159,7 @@ function KanbanContent() {
         ) : (
         <>
         {atividadesLigadas && (
-          <div className="mb-4 mx-4 md:mx-0">
+          <div className="mb-4 mx-4 md:mx-0 flex flex-wrap gap-2">
             <button
               type="button"
               aria-pressed={soHoje}
@@ -1097,6 +1168,16 @@ function KanbanContent() {
             >
               Hoje
             </button>
+            {adiarLigado && (
+              <button
+                type="button"
+                aria-pressed={soAdiados}
+                onClick={() => setSoAdiados((atual) => !atual)}
+                className={`rounded-lg border px-4 py-2 text-sm font-bold ${soAdiados ? "border-brand-blue bg-brand-blue text-white" : "border-gray-200 bg-white text-gray-800"}`}
+              >
+                {`Adiados (${quantidadeAdiados})`}
+              </button>
+            )}
           </div>
         )}
         <DragDropContext onDragEnd={onDragEnd}>
@@ -1236,6 +1317,29 @@ function KanbanContent() {
                                               Agendar consulta
                                             </button>
                                           )}
+                                          {adiarLigado && podeEditar && col.papel !== "ganho" && (
+                                            <button
+                                              type="button"
+                                              onClick={(e) => { e.stopPropagation(); abrirAdiar(lead); }}
+                                              className="text-left text-[11px] font-bold text-brand-blue hover:underline rounded focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-blue"
+                                            >
+                                              Adiar
+                                            </button>
+                                          )}
+                                          {adiarLigado && podeEditar && (() => {
+                                            const retomar = retomarPendenteNoFuturo<Atividade>(atividadesPorLead[lead.id], agoraQuadro);
+                                            if (!retomar) return null;
+                                            return (
+                                              <button
+                                                type="button"
+                                                onClick={(e) => { e.stopPropagation(); retomarAgora(lead.id, retomar.id); }}
+                                                disabled={retomandoId === retomar.id}
+                                                className="text-left text-[11px] font-bold text-brand-blue hover:underline rounded focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-blue disabled:opacity-50"
+                                              >
+                                                Retomar agora
+                                              </button>
+                                            );
+                                          })()}
                                         </div>
                                       );
                                     })()}
@@ -1975,6 +2079,15 @@ function KanbanContent() {
         )}
       </AnimatePresence>
 
+      {adiarAlvo && (
+        <AdiarLead
+          enviando={enviandoAdiar}
+          erro={erroAdiar}
+          onCancelar={() => { if (!enviandoAdiarRef.current) setAdiarAlvo(null); }}
+          onConfirmar={confirmarAdiar}
+        />
+      )}
+
       {ficha && (
         <FichaDoLead
           key={`${ficha.id}-${fichaPedido.aba}-${fichaPedido.consulta}`}
@@ -1984,6 +2097,8 @@ function KanbanContent() {
           podeEditar={podeEditar}
           podeExcluir={pode("crm.lead.excluir")}
           atividadesLigadas={atividadesLigadas}
+          papel={colunas.find((coluna) => coluna.id === ficha.status)?.papel}
+          onAdiar={() => abrirAdiar(ficha)}
           abaInicial={fichaPedido.aba}
           pedidoConsulta={fichaPedido.consulta}
           onAtividadeMudou={() => setVersaoAtividades((valor) => valor + 1)}

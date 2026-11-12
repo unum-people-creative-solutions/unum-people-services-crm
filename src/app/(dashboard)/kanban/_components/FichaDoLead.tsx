@@ -19,6 +19,7 @@ import { Input } from "@/components/ui/Input";
 import { PhoneInput } from "@/components/ui/PhoneInput";
 import { CPFInput } from "@/components/ui/CPFInput";
 import { StatusAdsDaVenda } from "@/components/StatusAdsDaVenda";
+import { useFlag } from "@/hooks/useFlag";
 import {
   AtividadeService,
   InteracaoService,
@@ -28,6 +29,7 @@ import {
   type Atividade,
   type Interacao,
   type LeadSale,
+  type PapelEtapa,
   type TipoDeAtividade,
   type TipoDeInteracao,
 } from "@/services/api";
@@ -113,6 +115,8 @@ export interface FichaDoLeadProps {
   podeEditar: boolean;
   podeExcluir: boolean;
   atividadesLigadas?: boolean;
+  papel?: PapelEtapa;
+  onAdiar?: () => void;
   abaInicial?: "dados" | "historico" | "atividades";
   pedidoConsulta?: number;
   onAtividadeMudou?: () => void;
@@ -129,6 +133,8 @@ export function FichaDoLead({
   podeEditar,
   podeExcluir,
   atividadesLigadas = false,
+  papel,
+  onAdiar,
   abaInicial = "dados",
   pedidoConsulta = 0,
   onAtividadeMudou,
@@ -159,6 +165,10 @@ export function FichaDoLead({
     setAba("atividades");
     setPedido((atual) => atual + 1);
   };
+  const adiarFlag = useFlag("crm-adiar");
+  const atividadesFlag = useFlag("crm-atividades");
+  const adiarLigado = adiarFlag && atividadesFlag;
+  const mostrarAdiar = adiarLigado && podeEditar && papel !== "ganho" && !!onAdiar;
 
   return (
     <div className="fixed inset-0 z-50 flex justify-end bg-black/50 text-gray-900" onClick={onFechar}>
@@ -229,13 +239,20 @@ export function FichaDoLead({
           )}
         </div>
 
-        {atividadesLigadas && podeEditar && (
-          <div className="shrink-0 border-b px-6 py-3">
-            <button type="button" onClick={agendarConsulta} className="w-full rounded-md bg-brand-blue p-3 text-sm font-bold text-white">
-              Agendar consulta
-            </button>
+        {(atividadesLigadas && podeEditar) || mostrarAdiar ? (
+          <div className="flex shrink-0 flex-col gap-2 border-b px-6 py-3">
+            {atividadesLigadas && podeEditar && (
+              <button type="button" onClick={agendarConsulta} className="w-full rounded-md bg-brand-blue p-3 text-sm font-bold text-white">
+                Agendar consulta
+              </button>
+            )}
+            {mostrarAdiar && (
+              <button type="button" onClick={() => onAdiar?.()} className="w-full rounded-md border border-gray-200 bg-white p-3 text-sm font-bold text-gray-800">
+                Adiar
+              </button>
+            )}
           </div>
-        )}
+        ) : null}
 
         <AbaDados
           id={idPainelDados}
