@@ -32,9 +32,10 @@ api.interceptors.response.use(
     }
     if (error.response?.status === 403) {
       // 403 por fatura em atraso (RF2-51): avisa a tela de bloqueio do AuthGuard
-      // e não navega. 403 com permissão nomeada fica na tela; os demais seguem
-      // para /acesso-negado. Para o operador (GlobalAdmin) o motivo "cobranca"
-      // não é bloqueio: segue como os demais 403 (DV-14 revista em 11/11/2026).
+      // e não navega. 403 com permissão nomeada fica na tela. 403 nao_e_o_autor
+      // (INT-12) fica na ficha, com alerta. Os demais seguem para /acesso-negado.
+      // Para o operador (GlobalAdmin) o motivo "cobranca" não é bloqueio: segue
+      // como os demais 403 (DV-14 revista em 11/11/2026).
       const operador = useAuthStore.getState().session?.role === 'GlobalAdmin';
       const recusaPorCobranca = !operador && error.response?.data?.motivo === 'cobranca';
       if (recusaPorCobranca && typeof window !== 'undefined') {
@@ -42,7 +43,9 @@ api.interceptors.response.use(
       }
       const permissao = error.response?.data?.permissao;
       const recusaPorPermissao = typeof permissao === 'string' && permissao.length > 0;
-      if (!recusaPorCobranca && !recusaPorPermissao && typeof window !== 'undefined' && !window.location.pathname.includes('/acesso-negado')) {
+      // INT-12: 403 nao_e_o_autor fica na ficha (alerta). Não é falta de acesso à empresa.
+      const naoEoAutor = error.response?.data?.error === 'nao_e_o_autor';
+      if (!recusaPorCobranca && !recusaPorPermissao && !naoEoAutor && typeof window !== 'undefined' && !window.location.pathname.includes('/acesso-negado')) {
         window.location.href = '/acesso-negado';
       }
     }
@@ -229,6 +232,70 @@ export const LeadService = {
     const response = await api.delete(url);
     return response.data;
   }
+};
+
+// Interações da ficha do lead (spec crm-funil-e-atividades-f2 INT-01 a INT-04).
+export type TipoDeInteracao = 'nota' | 'ligacao' | 'whatsapp' | 'email' | 'reuniao';
+
+export interface Interacao {
+  id: string;
+  tipo: TipoDeInteracao;
+  texto: string;
+  ocorrida_em: string;
+  autor_email: string;
+  autor_nome: string;
+  criada_em: string;
+  editada_em?: string;
+}
+
+export interface PaginaDeInteracoes {
+  itens: Interacao[];
+  cursor: string;
+}
+
+export interface NovaInteracao {
+  tipo: TipoDeInteracao;
+  texto: string;
+  ocorrida_em?: string;
+}
+
+export interface AlteracaoDeInteracao {
+  texto?: string;
+  ocorrida_em?: string;
+}
+
+function urlInteracoes(leadId: string, tenantId?: string, interacaoId?: string, cursor?: string) {
+  const base = interacaoId
+    ? `/leads/${encodeURIComponent(leadId)}/interacoes/${encodeURIComponent(interacaoId)}`
+    : `/leads/${encodeURIComponent(leadId)}/interacoes`;
+  const params = new URLSearchParams();
+  if (tenantId) params.set('tenant_id', tenantId);
+  if (cursor) params.set('cursor', cursor);
+  const qs = params.toString();
+  return qs ? `${base}?${qs}` : base;
+}
+
+export const InteracaoService = {
+  listar: async (leadId: string, tenantId?: string, cursor?: string): Promise<PaginaDeInteracoes> => {
+    const response = await api.get(urlInteracoes(leadId, tenantId, undefined, cursor));
+    return response.data;
+  },
+  criar: async (leadId: string, tenantId: string | undefined, corpo: NovaInteracao): Promise<Interacao> => {
+    const data: NovaInteracao = { tipo: corpo.tipo, texto: corpo.texto };
+    if (corpo.ocorrida_em) data.ocorrida_em = corpo.ocorrida_em;
+    const response = await api.post(urlInteracoes(leadId, tenantId), data);
+    return response.data;
+  },
+  alterar: async (leadId: string, interacaoId: string, tenantId: string | undefined, corpo: AlteracaoDeInteracao) => {
+    const data: AlteracaoDeInteracao = {};
+    if (corpo.texto !== undefined) data.texto = corpo.texto;
+    if (corpo.ocorrida_em !== undefined) data.ocorrida_em = corpo.ocorrida_em;
+    const response = await api.patch(urlInteracoes(leadId, tenantId, interacaoId), data);
+    return response.data;
+  },
+  apagar: async (leadId: string, interacaoId: string, tenantId?: string): Promise<void> => {
+    await api.delete(urlInteracoes(leadId, tenantId, interacaoId));
+  },
 };
 
 export const TenantService = {
