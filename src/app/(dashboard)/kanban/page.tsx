@@ -1,12 +1,12 @@
 "use client";
 
-import { useEffect, useState, useRef, Suspense, useCallback, Fragment } from "react";
+import { useEffect, useState, useRef, Suspense, useCallback } from "react";
 import { useSearchParams } from "next/navigation";
 import { DragDropContext, Droppable, Draggable } from "@hello-pangea/dnd";
 import api, { FunilService, LeadService, TenantService, LeadData, LeadSale, MonthSale, mensagemDeErro, GoogleAgendaService, type AgendamentoNoGoogle, type PapelEtapa } from "@/services/api";
 import { useFunil } from "@/hooks/useFunil";
-import { adicionar, iniciar, paraPedido, podeAdicionar, remover, renomear, type Rascunho } from "@/lib/editorDoFunil";
-import { BarraDoEditor, BotaoAdicionar, BotaoRemover, mensagemDeErroDoFunil, NomeDaColuna } from "./_components/EditorDoFunil";
+import { adicionar, iniciar, mover, paraPedido, podeAdicionar, remover, renomear, type Rascunho } from "@/lib/editorDoFunil";
+import { BarraDoEditor, BotaoAdicionar, BotaoRemover, ColunaArrastavel, FaixaDoFunil, mensagemDeErroDoFunil, NomeDaColuna } from "./_components/EditorDoFunil";
 import { useAuthStore } from "@/store/authStore";
 import { useTenant } from "@/contexts/TenantContext";
 import { useAcessosDoCRM } from "@/contexts/AcessosContext";
@@ -766,6 +766,11 @@ function KanbanContent() {
   };
 
   const onDragEnd = async (result: any) => {
+    if (result?.type === "COLUMN") {
+      if (!editando || !rascunho || !result.destination) return;
+      setRascunho(mover(rascunho, result.source.index, result.destination.index));
+      return;
+    }
     if (editando) return;
     if (!podeEditar) return;
     const { source, destination, draggableId } = result;
@@ -964,9 +969,9 @@ function KanbanContent() {
           </div>
         ) : (
         <DragDropContext onDragEnd={onDragEnd}>
-          <div className="flex gap-4 h-full overflow-x-auto pb-4 custom-scrollbar snap-x snap-mandatory scroll-smooth px-4 md:px-0">
+          <FaixaDoFunil editando={editando}>
             {colunas.map((col, indice) => (
-              <Fragment key={col.chave}>
+              <ColunaArrastavel key={col.chave} editando={editando} chave={col.chave} indice={indice} arrastavel={col.movivel && !isMobile}>
               <div role="region" aria-label={col.title} className="w-[85vw] md:w-72 flex flex-col bg-gray-200/50 rounded-lg p-3 max-h-full flex-shrink-0 snap-center border border-gray-200/50 md:border-transparent shadow-sm md:shadow-none">
                 {editando ? (
                   <div className="mb-4 flex flex-col gap-2">
@@ -1184,9 +1189,9 @@ function KanbanContent() {
               {editando && colunas[indice + 1]?.papel === "ganho" && (
                 <BotaoAdicionar pode={!!rascunho && podeAdicionar(rascunho)} onAdicionar={adicionarColuna} />
               )}
-              </Fragment>
+              </ColunaArrastavel>
             ))}
-          </div>
+          </FaixaDoFunil>
         </DragDropContext>
         )}
         </>

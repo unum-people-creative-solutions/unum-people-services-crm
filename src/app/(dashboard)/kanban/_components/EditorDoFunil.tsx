@@ -1,4 +1,5 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, type ReactNode } from 'react';
+import { Draggable, Droppable } from '@hello-pangea/dnd';
 
 // Modo de edição do funil (spec crm-funil-e-atividades-f1, FUN-10 a FUN-18).
 // A página guarda o rascunho; este arquivo só desenha os controles.
@@ -95,6 +96,47 @@ export function BotaoRemover({ quantidade, onRemover }: { quantidade: number; on
     >
       Remover coluna
     </button>
+  );
+}
+
+const CLASSE_DA_FAIXA = 'flex gap-4 h-full overflow-x-auto pb-4 custom-scrollbar snap-x snap-mandatory scroll-smooth px-4 md:px-0';
+
+export function FaixaDoFunil({ editando, children }: { editando: boolean; children: ReactNode }) {
+  if (!editando) return <div className={CLASSE_DA_FAIXA}>{children}</div>;
+  return (
+    <Droppable droppableId="funil" type="COLUMN" direction="horizontal">
+      {(provided) => (
+        <div ref={provided.innerRef} {...provided.droppableProps} className={CLASSE_DA_FAIXA}>
+          {children}
+          {provided.placeholder}
+        </div>
+      )}
+    </Droppable>
+  );
+}
+
+export function ColunaArrastavel({
+  editando,
+  chave,
+  indice,
+  arrastavel,
+  children,
+}: {
+  editando: boolean;
+  chave: string;
+  indice: number;
+  arrastavel: boolean;
+  children: ReactNode;
+}) {
+  if (!editando) return <>{children}</>;
+  return (
+    <Draggable draggableId={chave} index={indice} isDragDisabled={!arrastavel}>
+      {(provided) => (
+        <div ref={provided.innerRef} {...provided.draggableProps} {...provided.dragHandleProps}>
+          {children}
+        </div>
+      )}
+    </Draggable>
   );
 }
 

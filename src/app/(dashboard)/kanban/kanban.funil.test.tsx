@@ -56,16 +56,22 @@ vi.mock('@/hooks/useFlag', () => ({
 }));
 
 const dnd = vi.hoisted(() => ({
-  onDragEnd: null as null | ((r: unknown) => Promise<void> | void),
+  onDragEnd: null as null | ((r: any) => Promise<void> | void),
   cartoesSemArraste: [] as boolean[],
+  arrastes: [] as { id: string; desabilitado: boolean }[],
+  listas: [] as { id: string; type?: string; direction?: string }[],
 }));
 vi.mock('@hello-pangea/dnd', () => ({
   DragDropContext: ({ children, onDragEnd }: any) => {
     dnd.onDragEnd = onDragEnd;
     return <div>{children}</div>;
   },
-  Droppable: ({ children }: any) => children({ draggableProps: {}, innerRef: vi.fn(), droppableProps: {}, placeholder: null }, {}),
-  Draggable: ({ children, isDragDisabled }: any) => {
+  Droppable: ({ children, droppableId, type, direction }: any) => {
+    dnd.listas.push({ id: droppableId, type, direction });
+    return children({ draggableProps: {}, innerRef: vi.fn(), droppableProps: {}, placeholder: null }, {});
+  },
+  Draggable: ({ children, isDragDisabled, draggableId }: any) => {
+    dnd.arrastes.push({ id: String(draggableId), desabilitado: Boolean(isDragDisabled) });
     dnd.cartoesSemArraste.push(Boolean(isDragDisabled));
     return children({ draggableProps: {}, innerRef: vi.fn(), dragHandleProps: {} }, {});
   },
@@ -127,6 +133,8 @@ describe('Quadro pelo funil (T24)', () => {
     vi.clearAllMocks();
     dnd.onDragEnd = null;
     dnd.cartoesSemArraste = [];
+    dnd.arrastes = [];
+    dnd.listas = [];
     flags.funil = false;
     flags.agendamento = false;
     flags.agenda = false;
@@ -261,6 +269,8 @@ describe('Modo de edição (T25, T26, T27)', () => {
     (AcessosService.get as any).mockResolvedValue(acessos(COM_EDICAO));
     (FunilService.ler as any).mockResolvedValue(funilSalvo);
     (FunilService.salvar as any).mockResolvedValue(funilSalvo);
+    dnd.arrastes = [];
+    dnd.listas = [];
     quadro = { NOVO: [lead({ id: 'lead-novo', nome: 'Clara Nova', status: 'NOVO' })] };
   });
 
@@ -312,7 +322,10 @@ describe('Modo de edição (T25, T26, T27)', () => {
     expect(agendados.compareDocumentPosition(adicionar) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(adicionar.compareDocumentPosition(ganho) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
 
-    expect(dnd.cartoesSemArraste.slice(-2)).toEqual([true, true]);
+    expect(dnd.arrastes.filter((a) => a.id === 'a1' || a.id === 'a2').slice(-2)).toEqual([
+      { id: 'a1', desabilitado: true },
+      { id: 'a2', desabilitado: true },
+    ]);
 
     await user.click(removerVazia);
     expect(screen.queryByRole('region', { name: 'Proposta enviada' })).not.toBeInTheDocument();
@@ -405,5 +418,97 @@ describe('Modo de edição (T25, T26, T27)', () => {
     expect(screen.getByRole('textbox', { name: 'Nome da coluna Conversando' })).toHaveValue('Conversando');
     expect(screen.getByRole('button', { name: 'Salvar' })).toBeEnabled();
     expect(window.alert).not.toHaveBeenCalled();
+  });
+});
+
+const ORDEM_INICIAL = [
+  'Novos Leads',
+  'Em Atendimento',
+  'Proposta enviada',
+  'Agendados',
+  'Ganho (Conversão)',
+  'Perdido',
+];
+const ORDEM_APOS_1_PARA_2 = [
+  'Novos Leads',
+  'Proposta enviada',
+  'Em Atendimento',
+  'Agendados',
+  'Ganho (Conversão)',
+  'Perdido',
+];
+
+describe('Arrastar coluna (T28)', () => {
+  beforeEach(() => {
+    flags.funil = true;
+    (AcessosService.get as any).mockResolvedValue(acessos(COM_EDICAO));
+    (FunilService.ler as any).mockResolvedValue(funilSalvo);
+    (FunilService.salvar as any).mockResolvedValue(funilSalvo);
+    dnd.arrastes = [];
+    dnd.listas = [];
+    quadro = { NOVO: [lead({ id: 'lead-novo', nome: 'Clara Nova', status: 'NOVO' })] };
+    window.innerWidth = 1024;
+  });
+
+  function nomes() {
+    return screen.getAllByRole('region').map((regiao) => regiao.getAttribute('aria-label'));
+  }
+
+  it('type COLUMN de 1 para 2 reordena; destino 0 ou no Ganho não muda; cartão é ignorado', async () => {
+    renderKanban();
+    await screen.findByRole('region', { name: 'Novos Leads' });
+    expect(dnd.listas.some((lista) => lista.id === 'funil')).toBe(false);
+
+    const user = userEvent.setup();
+    await user.click(screen.getByRole('button', { name: 'Editar funil' }));
+    await screen.findByRole('textbox', { name: 'Nome da coluna Novos Leads' });
+
+    expect(dnd.listas.filter((lista) => lista.id === 'funil').at(-1)).toMatchObject({ type: 'COLUMN', direction: 'horizontal' });
+    const ultimo = (id: string) => [...dnd.arrastes].reverse().find((arraste) => arraste.id === id);
+    expect(ultimo('NOVO')?.desabilitado).toBe(true);
+    expect(ultimo('ATENDIMENTO')?.desabilitado).toBe(false);
+    expect(ultimo('GANHO')?.desabilitado).toBe(true);
+    expect(nomes()).toEqual(ORDEM_INICIAL);
+
+    await act(async () => {
+      await dnd.onDragEnd!({ type: 'COLUMN', source: { index: 1 }, destination: { index: 2 } });
+    });
+    expect(nomes()).toEqual(ORDEM_APOS_1_PARA_2);
+
+    await act(async () => {
+      await dnd.onDragEnd!({ type: 'COLUMN', source: { index: 2 }, destination: { index: 0 } });
+    });
+    expect(nomes()).toEqual(ORDEM_APOS_1_PARA_2);
+
+    await act(async () => {
+      await dnd.onDragEnd!({ type: 'COLUMN', source: { index: 2 }, destination: { index: 4 } });
+    });
+    expect(nomes()).toEqual(ORDEM_APOS_1_PARA_2);
+
+    await act(async () => {
+      await dnd.onDragEnd!({
+        type: 'DEFAULT',
+        source: { droppableId: 'NOVO', index: 0 },
+        destination: { droppableId: 'ATENDIMENTO', index: 0 },
+        draggableId: 'lead-novo',
+      });
+    });
+    expect(LeadService.updateStatus).not.toHaveBeenCalled();
+    expect(within(screen.getByRole('region', { name: 'Novos Leads' })).getByText('Clara Nova')).toBeInTheDocument();
+    expect(nomes()).toEqual(ORDEM_APOS_1_PARA_2);
+  });
+
+  it('no celular a coluna móvel não arrasta', async () => {
+    const largura = window.innerWidth;
+    window.innerWidth = 500;
+    try {
+      await abrirEdicao();
+      await waitFor(() => {
+        const ultimo = [...dnd.arrastes].reverse().find((arraste) => arraste.id === 'ATENDIMENTO');
+        expect(ultimo?.desabilitado).toBe(true);
+      });
+    } finally {
+      window.innerWidth = largura;
+    }
   });
 });
