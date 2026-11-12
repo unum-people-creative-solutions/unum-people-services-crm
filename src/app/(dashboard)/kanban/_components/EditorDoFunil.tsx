@@ -1,4 +1,5 @@
 import { useEffect, useRef, type ReactNode } from 'react';
+import type { AcaoDaColuna, ExigenciaDaAcao } from '@/services/api';
 import { Draggable, Droppable } from '@hello-pangea/dnd';
 
 // Modo de edição do funil (spec crm-funil-e-atividades-f1, FUN-10 a FUN-18).
@@ -83,6 +84,56 @@ export function NomeDaColuna({ nome, focar, onRenomear }: { nome: string; focar:
       onChange={(e) => onRenomear(e.target.value)}
       className="w-full rounded-md border border-gray-300 bg-white px-2 py-1 text-sm font-bold text-gray-800"
     />
+  );
+}
+
+const ACOES: { valor: AcaoDaColuna; rotulo: string }[] = [
+  { valor: 'nenhuma', rotulo: 'Nenhuma' },
+  { valor: 'consulta', rotulo: 'Consulta' },
+  { valor: 'ligar', rotulo: 'Ligar' },
+  { valor: 'whatsapp', rotulo: 'WhatsApp' },
+  { valor: 'email', rotulo: 'E-mail' },
+  { valor: 'reuniao', rotulo: 'Reunião' },
+  { valor: 'tarefa', rotulo: 'Tarefa' },
+  { valor: 'retomar', rotulo: 'Retomar contato' },
+  { valor: 'venda', rotulo: 'Registrar venda' },
+];
+
+export function SeletorDaAcao({
+  nome,
+  acao,
+  exigencia,
+  onMudar,
+}: {
+  nome: string;
+  acao: AcaoDaColuna;
+  exigencia?: ExigenciaDaAcao;
+  onMudar: (acao: AcaoDaColuna, exigencia: ExigenciaDaAcao) => void;
+}) {
+  return (
+    <div className="flex flex-col gap-1">
+      <label className="text-[10px] font-bold uppercase text-gray-500" htmlFor={`acao-${nome}`}>Ação ao receber</label>
+      <select
+        id={`acao-${nome}`}
+        aria-label={`Ação da coluna ${nome}`}
+        value={acao}
+        onChange={(e) => onMudar(e.target.value as AcaoDaColuna, exigencia ?? 'opcional')}
+        className="rounded-md border border-gray-300 bg-white px-2 py-1 text-xs"
+      >
+        {ACOES.map((opcao) => <option key={opcao.valor} value={opcao.valor}>{opcao.rotulo}</option>)}
+      </select>
+      {acao !== 'nenhuma' && (
+        <select
+          aria-label={`Exigência da coluna ${nome}`}
+          value={exigencia ?? 'opcional'}
+          onChange={(e) => onMudar(acao, e.target.value as ExigenciaDaAcao)}
+          className="rounded-md border border-gray-300 bg-white px-2 py-1 text-xs"
+        >
+          <option value="opcional">Opcional</option>
+          <option value="obrigatoria">Obrigatória</option>
+        </select>
+      )}
+    </div>
   );
 }
 

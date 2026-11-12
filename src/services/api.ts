@@ -175,14 +175,26 @@ export const LeadService = {
   },
   // removerDaAgenda (crm-google-agenda RF-26): a resposta à pergunta ao sair de "Agendados";
   // sem pergunta, a chave não vai.
-  updateStatus: async (id: string, status: string, valor?: number, dataVenda?: string, tenantId?: string, removerDaAgenda?: boolean) => {
+  updateStatus: async (
+    id: string,
+    status: string,
+    valor?: number,
+    dataVenda?: string,
+    tenantId?: string,
+    removerDaAgenda?: boolean,
+    acao?: { status_origem: string; atividade?: Record<string, unknown>; venda?: { valor: number; data: string } },
+  ) => {
     let url = `/leads/${id}`;
     if (tenantId) {
       url += `?tenant_id=${encodeURIComponent(tenantId)}`;
     }
-    const corpo = removerDaAgenda === undefined
-      ? { status, valor_venda: valor, data_venda: dataVenda }
-      : { status, valor_venda: valor, data_venda: dataVenda, remover_da_agenda: removerDaAgenda };
+    const corpo: Record<string, unknown> = { status, valor_venda: valor, data_venda: dataVenda };
+    if (removerDaAgenda !== undefined) corpo.remover_da_agenda = removerDaAgenda;
+    if (acao) {
+      corpo.status_origem = acao.status_origem;
+      if (acao.atividade) corpo.atividade = acao.atividade;
+      if (acao.venda) corpo.venda = acao.venda;
+    }
     const response = await api.put(url, corpo);
     return response.data;
   },
@@ -232,12 +244,12 @@ export const LeadService = {
     const response = await api.get(url);
     return response.data;
   },
-  addSale: async (leadId: string, valor: number, data: string, tenantId?: string) => {
+  addSale: async (leadId: string, valor: number, data: string, tenantId?: string, semMover?: boolean) => {
     let url = `/leads/${leadId}/sales`;
     if (tenantId) {
       url += `?tenant_id=${encodeURIComponent(tenantId)}`;
     }
-    const response = await api.post(url, { valor, data });
+    const response = await api.post(url, semMover ? { valor, data, sem_mover: true } : { valor, data });
     return response.data;
   },
   delete: async (id: string, tenantId?: string) => {
@@ -480,12 +492,17 @@ export const FlagsService = {
 // Funil da empresa (spec crm-funil-e-atividades-f1, D-F1-6).
 export type PapelEtapa = 'novo' | 'ganho' | 'perdido' | 'agendado' | 'comum';
 
+export type AcaoDaColuna = 'nenhuma' | 'consulta' | 'ligar' | 'whatsapp' | 'email' | 'reuniao' | 'tarefa' | 'retomar' | 'venda';
+export type ExigenciaDaAcao = 'opcional' | 'obrigatoria';
+
 export interface EtapaFunil {
   id: string;
   nome: string;
   papel: PapelEtapa;
   removivel: boolean;
   movivel: boolean;
+  acao?: AcaoDaColuna;
+  exigencia?: ExigenciaDaAcao;
 }
 
 export interface Funil {
@@ -502,14 +519,19 @@ export const FunilService = {
   },
   salvar: async (
     versao: number,
-    etapas: { id?: string; nome: string }[],
+    etapas: { id?: string; nome: string; acao?: string; exigencia?: string }[],
     tenantId?: string,
   ): Promise<Funil> => {
     let url = '/crm/funil';
     if (tenantId) url += `?tenant_id=${encodeURIComponent(tenantId)}`;
     const response = await api.put(url, {
       versao,
-      etapas: etapas.map((etapa) => (etapa.id ? { id: etapa.id, nome: etapa.nome } : { nome: etapa.nome })),
+      etapas: etapas.map((etapa) => ({
+        ...(etapa.id ? { id: etapa.id } : {}),
+        nome: etapa.nome,
+        acao: etapa.acao ?? 'nenhuma',
+        ...(etapa.acao && etapa.acao !== 'nenhuma' ? { exigencia: etapa.exigencia } : {}),
+      })),
     });
     return response.data;
   },
