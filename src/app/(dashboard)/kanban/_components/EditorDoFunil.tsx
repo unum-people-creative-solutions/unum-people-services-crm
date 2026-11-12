@@ -71,7 +71,9 @@ export function BarraDoEditor({
 export function NomeDaColuna({ nome, focar, onRenomear }: { nome: string; focar: boolean; onRenomear: (nome: string) => void }) {
   const ref = useRef<HTMLInputElement>(null);
   useEffect(() => {
-    if (focar) ref.current?.focus();
+    if (!focar || !ref.current) return;
+    ref.current.focus();
+    ref.current.select();
   }, [focar]);
   return (
     <input
@@ -86,15 +88,16 @@ export function NomeDaColuna({ nome, focar, onRenomear }: { nome: string; focar:
 
 export function BotaoRemover({ quantidade, onRemover }: { quantidade: number; onRemover: () => void }) {
   const bloqueado = quantidade > 0;
+  const texto = bloqueado ? `Mova os ${quantidade} leads antes de remover` : 'Remover coluna';
   return (
     <button
       type="button"
       disabled={bloqueado}
-      aria-label={bloqueado ? `Mova os ${quantidade} leads antes de remover` : 'Remover coluna'}
+      aria-label={texto}
       onClick={onRemover}
       className="text-left text-xs font-bold text-red-700 disabled:text-gray-500"
     >
-      Remover coluna
+      {texto}
     </button>
   );
 }

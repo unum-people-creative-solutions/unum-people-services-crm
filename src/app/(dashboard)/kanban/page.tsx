@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useRef, Suspense, useCallback } from "react";
+import { Fragment, useEffect, useState, useRef, Suspense, useCallback } from "react";
 import { useSearchParams } from "next/navigation";
 import { DragDropContext, Droppable, Draggable } from "@hello-pangea/dnd";
 import api, { FunilService, LeadService, TenantService, LeadData, LeadSale, MonthSale, mensagemDeErro, GoogleAgendaService, type AgendamentoNoGoogle, type PapelEtapa } from "@/services/api";
@@ -139,6 +139,7 @@ function KanbanContent() {
   const [rascunho, setRascunho] = useState<Rascunho | null>(null);
   const [erroEditor, setErroEditor] = useState<{ texto: string; recarregar: boolean } | null>(null);
   const [salvandoFunil, setSalvandoFunil] = useState(false);
+  const gravandoFunil = useRef(false);
   const [focoChave, setFocoChave] = useState<string | null>(null);
   const empresaDoEditor = useRef(activeTenantId);
   if (empresaDoEditor.current !== activeTenantId) {
@@ -750,7 +751,8 @@ function KanbanContent() {
     setRascunho(proximo);
   };
   const salvarFunil = async () => {
-    if (!rascunho || !activeTenantId || salvandoFunil) return;
+    if (!rascunho || !activeTenantId || gravandoFunil.current) return;
+    gravandoFunil.current = true;
     setSalvandoFunil(true);
     setErroEditor(null);
     try {
@@ -765,6 +767,7 @@ function KanbanContent() {
       const nomesPorId = new Map((funil?.etapas ?? []).map((etapa) => [etapa.id, etapa.nome]));
       setErroEditor(mensagemDeErroDoFunil(err, nomesPorId));
     } finally {
+      gravandoFunil.current = false;
       setSalvandoFunil(false);
     }
   };
@@ -984,7 +987,8 @@ function KanbanContent() {
         <DragDropContext onDragEnd={onDragEnd}>
           <FaixaDoFunil editando={editando}>
             {colunas.map((col, indice) => (
-              <ColunaArrastavel key={col.chave} editando={editando} chave={col.chave} indice={indice} arrastavel={col.movivel && !isMobile}>
+              <Fragment key={col.chave}>
+              <ColunaArrastavel editando={editando} chave={col.chave} indice={indice} arrastavel={col.movivel && !isMobile}>
               <div role="region" aria-label={col.title} className="w-[85vw] md:w-72 flex flex-col bg-gray-200/50 rounded-lg p-3 max-h-full flex-shrink-0 snap-center border border-gray-200/50 md:border-transparent shadow-sm md:shadow-none">
                 {editando ? (
                   <div className="mb-4 flex flex-col gap-2">
@@ -1207,10 +1211,11 @@ function KanbanContent() {
                   )}
                 </Droppable>
               </div>
+              </ColunaArrastavel>
               {editando && colunas[indice + 1]?.papel === "ganho" && (
                 <BotaoAdicionar pode={!!rascunho && podeAdicionar(rascunho)} onAdicionar={adicionarColuna} />
               )}
-              </ColunaArrastavel>
+              </Fragment>
             ))}
           </FaixaDoFunil>
         </DragDropContext>

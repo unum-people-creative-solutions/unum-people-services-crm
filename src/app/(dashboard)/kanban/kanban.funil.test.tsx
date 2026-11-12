@@ -312,11 +312,13 @@ describe('Modo de edição (T25, T26, T27)', () => {
 
     const removerCheia = within(screen.getByRole('region', { name: 'Em Atendimento' })).getByRole('button', { name: 'Mova os 2 leads antes de remover' });
     expect(removerCheia).toBeDisabled();
+    expect(removerCheia).toHaveTextContent('Mova os 2 leads antes de remover');
     const removerVazia = within(screen.getByRole('region', { name: 'Proposta enviada' })).getByRole('button', { name: 'Remover coluna' });
     expect(removerVazia).toBeEnabled();
 
     const adicionar = screen.getByRole('button', { name: 'Adicionar coluna' });
     expect(adicionar).toBeEnabled();
+    expect(within(screen.getByRole('region', { name: 'Agendados' })).queryByRole('button', { name: 'Adicionar coluna' })).not.toBeInTheDocument();
     const agendados = screen.getByRole('region', { name: 'Agendados' });
     const ganho = screen.getByRole('region', { name: 'Ganho (Conversão)' });
     expect(agendados.compareDocumentPosition(adicionar) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
@@ -347,9 +349,11 @@ describe('Modo de edição (T25, T26, T27)', () => {
     const user = await abrirEdicao();
     await user.click(screen.getByRole('button', { name: 'Adicionar coluna' }));
 
-    const campo = screen.getByRole('textbox', { name: 'Nome da coluna Nova etapa' });
+    const campo = screen.getByRole('textbox', { name: 'Nome da coluna Nova etapa' }) as HTMLInputElement;
     expect(campo).toHaveValue('Nova etapa');
     expect(campo).toHaveFocus();
+    expect(campo.selectionStart).toBe(0);
+    expect(campo.selectionEnd).toBe('Nova etapa'.length);
     const nova = screen.getByRole('region', { name: 'Nova etapa' });
     const ganho = screen.getByRole('region', { name: 'Ganho (Conversão)' });
     expect(nova.compareDocumentPosition(ganho) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
@@ -394,6 +398,21 @@ describe('Modo de edição (T25, T26, T27)', () => {
     expect(screen.queryByText('Conversando')).not.toBeInTheDocument();
   });
 
+  it('"Salvar" fica desabilitado enquanto a gravação não responde', async () => {
+    let concluir: (funil: Funil) => void = () => {};
+    (FunilService.salvar as any).mockImplementation(() => new Promise((resolve) => { concluir = resolve; }));
+    const user = await abrirEdicao();
+    const salvar = screen.getByRole('button', { name: 'Salvar' });
+    await user.click(salvar);
+
+    expect(salvar).toBeDisabled();
+    const enviadas = (FunilService.salvar as any).mock.calls.length;
+    await user.click(salvar);
+    expect((FunilService.salvar as any).mock.calls.length).toBe(enviadas);
+    await act(async () => { concluir(funilSalvo); });
+    await waitFor(() => expect(screen.queryByRole('button', { name: 'Salvar' })).not.toBeInTheDocument());
+  });
+
   it.each([
     [{ response: { status: 409, data: { error: 'funil_mudou' } } }, 'Outra pessoa alterou o funil. Recarregue para ver a versão atual.', true],
     [{ response: { status: 409, data: { error: 'etapa_com_leads', etapas: ['ATENDIMENTO'] } } }, 'A coluna Em Atendimento tem leads. Mova os leads antes de remover.', false],
@@ -405,6 +424,7 @@ describe('Modo de edição (T25, T26, T27)', () => {
     [{ response: { status: 403, data: { error: 'forbidden', permissao: 'crm.funil.editar' } } }, 'Você não tem permissão para editar o funil.', false],
     [new Error('rede'), 'Não foi possível salvar o funil. Tente de novo.', false],
     [{ response: { status: 500, data: { error: 'Failed to save funnel' } } }, 'Não foi possível salvar o funil. Tente de novo.', false],
+    [{ response: { status: 500, data: { error: 'funil_mudou' } } }, 'Não foi possível salvar o funil. Tente de novo.', false],
   ])('erro %j mantém o rascunho e mostra o alerta', async (erro, mensagem, temRecarregar) => {
     (FunilService.salvar as any).mockRejectedValue(erro);
     const user = await abrirEdicao();
