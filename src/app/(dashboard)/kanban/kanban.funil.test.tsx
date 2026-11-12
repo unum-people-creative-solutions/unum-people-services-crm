@@ -553,3 +553,49 @@ describe('Setas no celular (T29)', () => {
     expect(nomes()).toEqual(ORDEM_INICIAL);
   });
 });
+
+const STATUS_INVALIDO = { response: { status: 400, data: { error: 'status_invalido' } } };
+
+describe('Coluna removida por outra pessoa (T30)', () => {
+  beforeEach(() => {
+    flags.funil = false;
+    flags.agendamento = false;
+    flags.agenda = false;
+    window.alert = vi.fn();
+    (AcessosService.get as any).mockResolvedValue(acessos(GESTOR));
+    (FunilService.ler as any).mockResolvedValue(funilSalvo);
+    quadro = { NOVO: [lead({ id: 'lead-novo', nome: 'Clara Nova', status: 'NOVO' })] };
+    (LeadService.list as any).mockImplementation((status: string) => Promise.resolve(quadro[status] ?? []));
+    (LeadService.updateStatus as any).mockRejectedValue(STATUS_INVALIDO);
+  });
+
+  async function esperarRecarga(funisAntes: number, listasAntes: number) {
+    const alerta = await screen.findByRole('alert');
+    expect(alerta).toHaveTextContent('Esta coluna não existe mais. Recarregue o quadro.');
+    expect(window.alert).not.toHaveBeenCalled();
+    await waitFor(() => {
+      expect(FunilService.ler).toHaveBeenCalledTimes(funisAntes + 1);
+      expect((LeadService.list as any).mock.calls.length).toBeGreaterThan(listasAntes);
+    });
+  }
+
+  it('arrastar o lead avisa que a coluna não existe e relê o quadro', async () => {
+    renderKanban();
+    await screen.findByText('Clara Nova');
+    const funisAntes = (FunilService.ler as any).mock.calls.length;
+    const listasAntes = (LeadService.list as any).mock.calls.length;
+    await arrastar('NOVO', 'ATENDIMENTO', 'lead-novo');
+    await esperarRecarga(funisAntes, listasAntes);
+  });
+
+  it('a folha "Mover lead" avisa que a coluna não existe e relê o quadro', async () => {
+    renderKanban();
+    await screen.findByText('Clara Nova');
+    const funisAntes = (FunilService.ler as any).mock.calls.length;
+    const listasAntes = (LeadService.list as any).mock.calls.length;
+    const user = userEvent.setup();
+    await user.click(screen.getByRole('button', { name: 'Mover lead' }));
+    await user.click(screen.getByRole('button', { name: 'Em Atendimento' }));
+    await esperarRecarga(funisAntes, listasAntes);
+  });
+});

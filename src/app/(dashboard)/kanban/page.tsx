@@ -135,6 +135,7 @@ function KanbanContent() {
   const { funil, erro: erroFunil, recarregar, substituir } = useFunil();
   const podeEditarFunil = useFlag("crm-funil-editavel") && pode("crm.funil.editar");
   const [editando, setEditando] = useState(false);
+  const [colunaSumiu, setColunaSumiu] = useState(false);
   const [rascunho, setRascunho] = useState<Rascunho | null>(null);
   const [erroEditor, setErroEditor] = useState<{ texto: string; recarregar: boolean } | null>(null);
   const [salvandoFunil, setSalvandoFunil] = useState(false);
@@ -592,10 +593,17 @@ function KanbanContent() {
       else await LeadService.updateStatus(draggableId, destinationId, valor, dataVenda, activeTenantId, removerDaAgenda);
       // Sincroniza com o servidor para pegar dados atualizados
       loadLeads(true);
-    } catch (err) { 
+    } catch (err) {
       console.error(err);
+      const resposta = (err as { response?: { status?: number; data?: { error?: string } } } | null)?.response;
+      if (resposta?.status === 400 && resposta.data?.error === "status_invalido") {
+        setColunaSumiu(true);
+        recarregar();
+        loadLeads();
+        return;
+      }
       alert(mensagemDeErro(err, "Falha ao salvar movimento no servidor. Sincronizando..."));
-      loadLeads(); 
+      loadLeads();
     }
   };
 
@@ -959,6 +967,11 @@ function KanbanContent() {
               Editar funil
             </button>
           )
+        )}
+        {colunaSumiu && (
+          <div role="alert" className="mx-4 md:mx-0 mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-800">
+            Esta coluna não existe mais. Recarregue o quadro.
+          </div>
         )}
         {erroFunil ? (
           <div role="alert" className="mx-4 md:mx-0 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-800">
