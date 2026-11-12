@@ -298,6 +298,70 @@ export const InteracaoService = {
   },
 };
 
+// Atividades do lead (spec crm-funil-e-atividades-f3, ATV-06).
+export type TipoDeAtividade = 'consulta' | 'ligar' | 'whatsapp' | 'email' | 'reuniao' | 'tarefa' | 'retomar';
+export type SituacaoDeAtividade = 'pendente' | 'feita' | 'cancelada';
+
+export interface Atividade {
+  id: string;
+  tipo: TipoDeAtividade;
+  descricao: string;
+  vence_em: string;
+  duracao_min?: number;
+  lembrar_antes_min?: number;
+  situacao: SituacaoDeAtividade;
+  criada_em: string;
+  criada_por: string;
+}
+
+export interface PaginaDeAtividades {
+  itens: Atividade[];
+}
+
+export interface NovaAtividade {
+  tipo: TipoDeAtividade;
+  descricao: string;
+  vence_em: string;
+  duracao_min?: number;
+  lembrar_antes_min?: number;
+}
+
+function urlAtividades(leadId: string, tenantId?: string, atividadeId?: string, acao?: 'concluir' | 'cancelar') {
+  let base = `/leads/${encodeURIComponent(leadId)}/atividades`;
+  if (atividadeId) base += `/${encodeURIComponent(atividadeId)}`;
+  if (acao) base += `/${acao}`;
+  const params = new URLSearchParams();
+  if (tenantId) params.set('tenant_id', tenantId);
+  const qs = params.toString();
+  return qs ? `${base}?${qs}` : base;
+}
+
+function corpoNovaAtividade(corpo: NovaAtividade): NovaAtividade {
+  const data: NovaAtividade = { tipo: corpo.tipo, descricao: corpo.descricao, vence_em: corpo.vence_em };
+  if (corpo.duracao_min !== undefined) data.duracao_min = corpo.duracao_min;
+  if (corpo.lembrar_antes_min !== undefined) data.lembrar_antes_min = corpo.lembrar_antes_min;
+  return data;
+}
+
+export const AtividadeService = {
+  listar: async (leadId: string, tenantId?: string): Promise<PaginaDeAtividades> => {
+    const response = await api.get(urlAtividades(leadId, tenantId));
+    return response.data;
+  },
+  criar: async (leadId: string, tenantId: string | undefined, corpo: NovaAtividade): Promise<Atividade> => {
+    const response = await api.post(urlAtividades(leadId, tenantId), corpoNovaAtividade(corpo));
+    return response.data;
+  },
+  concluir: async (leadId: string, atividadeId: string, tenantId?: string): Promise<Atividade> => {
+    const response = await api.post(urlAtividades(leadId, tenantId, atividadeId, 'concluir'));
+    return response.data;
+  },
+  cancelar: async (leadId: string, atividadeId: string, tenantId?: string): Promise<Atividade> => {
+    const response = await api.post(urlAtividades(leadId, tenantId, atividadeId, 'cancelar'));
+    return response.data;
+  },
+};
+
 export const TenantService = {
   list: async () => {
     const response = await api.get('/admin/tenants');
