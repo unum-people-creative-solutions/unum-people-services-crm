@@ -9,7 +9,8 @@ export type PermissaoDoCRM =
   | 'crm.lead.criar'
   | 'crm.lead.editar'
   | 'crm.lead.excluir'
-  | 'crm.integracoes.gerir';
+  | 'crm.integracoes.gerir'
+  | 'crm.funil.editar';
 
 export type PermissaoDoPortal = 'portal.usuarios.gerir';
 

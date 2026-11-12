@@ -7,6 +7,7 @@ import { useAuthStore } from '@/store/authStore';
 import { useTenant } from '@/contexts/TenantContext';
 import leadDoGet from '@/services/__fixtures__/get-leads-lead-google-agenda.json';
 import naoConectada from '@/services/__fixtures__/google-agenda-nao-conectada.json';
+import funilPadrao from '@/services/__fixtures__/get-crm-funil-padrao.json';
 
 // crm-google-agenda RF-27 / CA-27: /kanban?lead=<id> abre o lead no mesmo modal que o
 // clique no cartão abre, procurando só nos leads já carregados do tenant ativo.
@@ -67,6 +68,7 @@ describe('/kanban?lead=<id>', () => {
     });
     vi.spyOn(api, 'get').mockImplementation(async (url: string) => {
       chamadas.push(url);
+      if (url.startsWith('/crm/funil')) return { data: funilPadrao };
       if (url.startsWith('/me/acessos')) return { data: ACESSOS };
       if (url.startsWith('/leads?view=sales')) return { data: [] };
       if (url.startsWith('/leads?')) return { data: quadro[new URLSearchParams(url.split('?')[1]).get('status') as string] ?? [] };

@@ -14,10 +14,13 @@ vi.mock('next/navigation', () => ({
   useSearchParams: vi.fn(() => new URLSearchParams()),
 }));
 
-vi.mock('@/services/api', () => ({
+vi.mock('@/services/api', async () => {
+  const { default: funilPadrao } = await import('@/services/__fixtures__/get-crm-funil-padrao.json');
+  return {
   default: { interceptors: { request: { use: vi.fn() }, response: { use: vi.fn() } } },
   mensagemDeErro: (_err: unknown, padrao: string) => padrao,
   AcessosService: { get: vi.fn() },
+  FunilService: { ler: vi.fn(async () => funilPadrao) },
   LeadService: {
     list: vi.fn(),
     create: vi.fn(),
@@ -32,7 +35,8 @@ vi.mock('@/services/api', () => ({
     list: vi.fn(),
     listMyTenants: vi.fn(),
   },
-}));
+  };
+});
 
 vi.mock('@/store/authStore', () => ({
   useAuthStore: vi.fn(),

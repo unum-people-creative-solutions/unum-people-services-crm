@@ -17,10 +17,12 @@ vi.mock('next/navigation', () => ({
 
 vi.mock('@/services/api', async () => {
   const real = await vi.importActual<typeof import('@/services/api')>('@/services/api');
+  const { default: funilPadrao } = await import('@/services/__fixtures__/get-crm-funil-padrao.json');
   return {
     default: { interceptors: { request: { use: vi.fn() }, response: { use: vi.fn() } } },
     mensagemDeErro: real.mensagemDeErro,
     AcessosService: { get: vi.fn() },
+    FunilService: { ler: vi.fn(async () => funilPadrao) },
     LeadService: {
       list: vi.fn(),
       create: vi.fn(),
