@@ -255,6 +255,7 @@ export function FichaDoLead({
           onSalvo={onSalvo}
           onFechar={onFechar}
           onRegistrarVenda={onRegistrarVenda}
+          mostrarVendas={!atividadesLigadas}
         />
         <AbaHistorico
           id={idPainelHistorico}
@@ -323,6 +324,7 @@ function AbaDados({
   onSalvo,
   onFechar,
   onRegistrarVenda,
+  mostrarVendas = true,
 }: {
   id: string;
   rotuloId: string;
@@ -333,6 +335,7 @@ function AbaDados({
   onSalvo: () => void;
   onFechar: () => void;
   onRegistrarVenda: () => void;
+  mostrarVendas?: boolean;
 }) {
   const [erro, setErro] = useState<string | null>(null);
   const [salvando, setSalvando] = useState(false);
@@ -415,7 +418,7 @@ function AbaDados({
           </div>
         </fieldset>
 
-        <VendasDoMes lead={lead} podeEditar={podeEditar} onRegistrarVenda={onRegistrarVenda} />
+        {mostrarVendas && <VendasDoMes lead={lead} podeEditar={podeEditar} onRegistrarVenda={onRegistrarVenda} />}
 
         <div className="flex gap-3">
           <button type="button" onClick={onFechar} className="flex-1 rounded-md bg-gray-100 p-3 font-bold">Cancelar</button>
@@ -1094,9 +1097,12 @@ function AbaVendas({
         </form>
       )}
       {vendas.length > 0 ? vendas.map((venda) => (
-        <article key={venda.id} aria-label={`Venda ${formatarReais(venda.valor)}`} className="mb-2 rounded-md border p-3">
-          <p className="text-xs text-gray-500">{dataDaVenda(venda.data)}</p>
-          <p className="font-bold text-green-700">{formatarReais(venda.valor)}</p>
+        <article key={venda.id} aria-label={`Venda ${formatarReais(venda.valor)}`} className="mb-2 rounded-md border bg-gray-50 p-3">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-bold text-gray-400">{dataDaVenda(venda.data)}</span>
+            <span className="font-black text-green-700">{formatarReais(venda.valor)}</span>
+          </div>
+          <StatusAdsDaVenda ads={venda.ads} motivo={venda.ads_motivo} />
         </article>
       )) : <p className="py-4 text-center text-sm italic text-gray-400">Nenhuma venda registrada.</p>}
     </div>
