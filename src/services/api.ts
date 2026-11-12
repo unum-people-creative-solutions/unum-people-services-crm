@@ -200,6 +200,22 @@ export const LeadService = {
     const response = await api.put(url, corpo);
     return response.data;
   },
+  // Adiar (spec crm-funil-e-atividades-f4, ADI-01): POST devolve a atividade retomar (201).
+  // descricao só vai quando o motivo foi preenchido.
+  adiar: async (
+    id: string,
+    tenantId: string | undefined,
+    corpo: { vence_em: string; descricao?: string },
+  ): Promise<Atividade> => {
+    const params = new URLSearchParams();
+    if (tenantId) params.set('tenant_id', tenantId);
+    const qs = params.toString();
+    const base = `/leads/${encodeURIComponent(id)}/adiar`;
+    const data: { vence_em: string; descricao?: string } = { vence_em: corpo.vence_em };
+    if (corpo.descricao) data.descricao = corpo.descricao;
+    const response = await api.post(qs ? `${base}?${qs}` : base, data);
+    return response.data;
+  },
   update: async (id: string, data: { nome: string; email?: string; telefone: string; cpf?: string; data_nascimento?: string; origem?: string; anotacoes?: string }, tenantId?: string) => {
     let url = `/leads/${id}`;
     if (tenantId) {
