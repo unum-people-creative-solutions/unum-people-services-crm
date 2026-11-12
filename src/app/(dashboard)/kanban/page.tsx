@@ -3,7 +3,7 @@
 import { Fragment, useEffect, useState, useRef, Suspense, useCallback } from "react";
 import { useSearchParams } from "next/navigation";
 import { DragDropContext, Droppable, Draggable } from "@hello-pangea/dnd";
-import api, { AtividadeService, FunilService, LeadService, TenantService, LeadData, LeadSale, MonthSale, mensagemDeErro, GoogleAgendaService, type AgendamentoNoGoogle, type Atividade, type AcaoDaColuna, type ExigenciaDaAcao, type PapelEtapa } from "@/services/api";
+import api, { AtividadeService, FunilService, LeadService, TenantService, LeadData, LeadSale, MonthSale, mensagemDeErro, GoogleAgendaService, type AgendamentoNoGoogle, type Atividade, type AcaoDaColuna, type ExigenciaDaAcao, type PapelEtapa, type TipoDeAtividade } from "@/services/api";
 import { useFunil } from "@/hooks/useFunil";
 import { adicionar, definirAcao, iniciar, mover, moverParaDireita, moverParaEsquerda, paraPedido, podeAdicionar, remover, renomear, type Rascunho } from "@/lib/editorDoFunil";
 import { BarraDoEditor, BotaoAdicionar, BotaoRemover, ColunaArrastavel, FaixaDoFunil, mensagemDeErroDoFunil, NomeDaColuna, SeletorDaAcao, SetasDaColuna } from "./_components/EditorDoFunil";
@@ -209,7 +209,8 @@ function KanbanContent() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [ficha, setFicha] = useState<any>(null);
-  const [fichaPedido, setFichaPedido] = useState<{ aba: "dados" | "historico" | "atividades"; consulta: number }>({ aba: "dados", consulta: 0 });
+  const [fichaPedido, setFichaPedido] = useState<{ aba: "dados" | "historico" | "acoes" | "atividades" | "vendas"; consulta: number; tipo?: string }>({ aba: "dados", consulta: 0 });
+  const [movimento, setMovimento] = useState<null | { leadId: string; origem: string; destino: string; acao: AcaoDaColuna; removerDaAgenda?: boolean }>(null);
   const [atividadesPorLead, setAtividadesPorLead] = useState<Record<string, Atividade[]>>({});
   const [erroAtividades, setErroAtividades] = useState<string | null>(null);
   const [soHoje, setSoHoje] = useState(false);
@@ -259,7 +260,7 @@ function KanbanContent() {
 
   // Google Agenda no quadro (crm-google-agenda RF-24 a RF-26).
   const [avisoAgendaFalhou, setAvisoAgendaFalhou] = useState(false);
-  const [saidaDaAgenda, setSaidaDaAgenda] = useState<{ draggableId: string; destinationId: string } | null>(null);
+  const [saidaDaAgenda, setSaidaDaAgenda] = useState<{ draggableId: string; destinationId: string; sourceId: string } | null>(null);
   const [tentandoNaAgenda, setTentandoNaAgenda] = useState<Record<string, boolean>>({});
   const [erroNaAgenda, setErroNaAgenda] = useState<Record<string, boolean>>({});
 
@@ -683,9 +684,18 @@ function KanbanContent() {
 
   const confirmBackwardsMove = async () => {
     if (!pendingMove) return;
-    await executeMove(pendingMove.draggableId, pendingMove.destinationId);
+    const destino = colunas.find((coluna) => coluna.id === pendingMove.destinationId);
+    const lead = (boardData[pendingMove.destinationId] || []).find((item: { id?: string }) => item?.id === pendingMove.draggableId);
+    const origem = pendingMove.sourceId;
+    const id = pendingMove.draggableId;
+    const destinoId = pendingMove.destinationId;
     setIsConfirmModalOpen(false);
     setPendingMove(null);
+    if (atividadesLigadas && destino && lead) {
+      await seguirParaColuna(lead, origem, destino);
+      return;
+    }
+    await executeMove(id, destinoId);
   };
 
   // A flag pode ligar depois da carga: a coluna passa a seguir a data.
@@ -739,10 +749,28 @@ function KanbanContent() {
   }, [atividadesLigadas, activeTenantId, chaveDosLeads, versaoAtividades]);
 
   // Mover: o horário atual só preenche o modal se ainda for futuro (blueprint §2.1).
-  const abrirConsulta = (lead: any) => {
+  const abrirFichaNaAcao = (lead: { id: string }, destino: ColunaQuadro) => {
     setIsEditModalOpen(false);
-    setFichaPedido((atual) => ({ aba: "atividades", consulta: atual.consulta + 1 }));
-    setFicha(lead);
+    setFichaPedido((atual) => ({
+      aba: destino.acao === "venda" ? "vendas" : "acoes",
+      consulta: atual.consulta + 1,
+      tipo: destino.acao === "venda" ? undefined : destino.acao,
+    }));
+    setFicha({ ...lead, status: destino.id });
+  };
+
+  const seguirParaColuna = async (lead: { id: string }, origem: string, destino: ColunaQuadro, removerDaAgenda?: boolean) => {
+    if (!atividadesLigadas || destino.acao === "nenhuma") {
+      await executeMove(lead.id, destino.id, 0, undefined, removerDaAgenda);
+      return;
+    }
+    if (destino.exigencia === "obrigatoria") {
+      setMovimento({ leadId: lead.id, origem, destino: destino.id, acao: destino.acao, removerDaAgenda });
+      abrirFichaNaAcao(lead, destino);
+      return;
+    }
+    await executeMove(lead.id, destino.id, 0, undefined, removerDaAgenda);
+    abrirFichaNaAcao(lead, destino);
   };
 
   const abrirAgendamento = (lead: any, modo: "mover" | "alterar") => {
@@ -787,6 +815,12 @@ function KanbanContent() {
     const saida = saidaDaAgenda;
     if (!saida) return;
     setSaidaDaAgenda(null);
+    const destino = colunasRef.current.find((coluna) => coluna.id === saida.destinationId);
+    const lead = (Object.values(boardData).flat() as { id?: string }[]).find((item) => item?.id === saida.draggableId);
+    if (atividadesLigadas && destino && destino.acao !== "nenhuma" && lead?.id) {
+      await seguirParaColuna(lead as { id: string }, saida.sourceId, destino, remover);
+      return;
+    }
     await executeMove(saida.draggableId, saida.destinationId, 0, undefined, remover);
   };
   const fecharSaidaDaAgenda = () => {
@@ -918,7 +952,7 @@ function KanbanContent() {
     // 2. LÓGICA DE MODAIS (Mantém o card no destino enquanto aguarda)
     // Sair de "Agendados" com evento (menos para "Ganho") pergunta antes (RF-26; substitui o "Mover para trás?").
     if (googleAgendaLigada && source.droppableId === "AGENDADO" && destination.droppableId !== "GANHO" && (movedLead as any)?.google_situacao === "ok") {
-      setSaidaDaAgenda({ draggableId, destinationId: destination.droppableId });
+      setSaidaDaAgenda({ draggableId, destinationId: destination.droppableId, sourceId: source.droppableId });
       return;
     }
     // "Agendados" pede data e hora, de qualquer coluna (substitui o "Mover para trás?").
@@ -928,19 +962,23 @@ function KanbanContent() {
       return;
     }
 
-    if (destination.droppableId === "GANHO") {
+    if (!atividadesLigadas && destination.droppableId === "GANHO") {
       setPendingMove({ draggableId, sourceId: source.droppableId, destinationId: destination.droppableId, sourceIndex: source.index, destinationIndex: destination.index });
       setIsSaleModalOpen(true);
       return;
     }
-    
+
     if (destColDef && sourceColDef && destColDef.order < sourceColDef.order) {
       setPendingMove({ draggableId, sourceId: source.droppableId, destinationId: destination.droppableId, sourceIndex: source.index, destinationIndex: destination.index });
       setIsConfirmModalOpen(true);
       return;
     }
 
-    // 3. MOVIMENTO NORMAL: Sincroniza com servidor
+    if (atividadesLigadas && destColDef && movedLead) {
+      await seguirParaColuna(movedLead, source.droppableId, destColDef);
+      return;
+    }
+
     await executeMove(draggableId, destination.droppableId);
   };
 
@@ -1314,15 +1352,6 @@ function KanbanContent() {
                                               <p className="font-bold">{rotulo} {quando}</p>
                                               {proxima.descricao ? <p className="font-medium text-gray-600">{proxima.descricao}</p> : null}
                                             </article>
-                                          )}
-                                          {podeEditar && (
-                                            <button
-                                              type="button"
-                                              onClick={(e) => { e.stopPropagation(); abrirConsulta(lead); }}
-                                              className="text-left text-[11px] font-bold text-brand-blue hover:underline rounded focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-blue"
-                                            >
-                                              Agendar consulta
-                                            </button>
                                           )}
                                           {adiarLigado && podeEditar && col.papel !== "ganho" && (
                                             <button
@@ -2050,15 +2079,17 @@ function KanbanContent() {
                         };
 
                         if (googleAgendaLigada && quickMoveLead.status === "AGENDADO" && col.id !== "GANHO" && quickMoveLead.google_situacao === "ok") {
-                          setSaidaDaAgenda({ draggableId: quickMoveLead.id, destinationId: col.id });
+                          setSaidaDaAgenda({ draggableId: quickMoveLead.id, destinationId: col.id, sourceId: quickMoveLead.status });
                         } else if (agendamentoLigado && !atividadesLigadas && col.id === "AGENDADO") {
                           abrirAgendamento(quickMoveLead, "mover");
-                        } else if (col.id === "GANHO") {
+                        } else if (!atividadesLigadas && col.id === "GANHO") {
                           setPendingMove(moveData);
                           setIsSaleModalOpen(true);
                         } else if (destColDef.order < (sourceColDef?.order || 0)) {
                           setPendingMove(moveData);
                           setIsConfirmModalOpen(true);
+                        } else if (atividadesLigadas) {
+                          void seguirParaColuna(quickMoveLead, quickMoveLead.status, col);
                         } else {
                           executeMove(quickMoveLead.id, col.id);
                         }
@@ -2108,8 +2139,33 @@ function KanbanContent() {
           onAdiar={() => abrirAdiar(ficha)}
           abaInicial={fichaPedido.aba}
           pedidoConsulta={fichaPedido.consulta}
+          tipoInicial={fichaPedido.tipo as TipoDeAtividade | undefined}
+          acaoDoMovimento={movimento?.leadId === ficha.id ? movimento.acao : undefined}
+          onConcluirMovimento={async (corpo) => {
+            if (!movimento || movimento.leadId !== ficha.id) return;
+            const venda = corpo.tipo === "venda" ? { valor: Number(corpo.descricao), data: corpo.vence_em } : undefined;
+            await LeadService.updateStatus(
+              movimento.leadId,
+              movimento.destino,
+              venda?.valor ?? 0,
+              venda?.data,
+              activeTenantId,
+              movimento.removerDaAgenda,
+              {
+                status_origem: movimento.origem,
+                atividade: corpo.tipo === "venda" ? undefined : corpo,
+                venda,
+              },
+            );
+            setMovimento(null);
+            loadLeads(true);
+          }}
           onAtividadeMudou={() => setVersaoAtividades((valor) => valor + 1)}
-          onFechar={() => setFicha(null)}
+          onFechar={() => {
+            if (movimento) loadLeads(true);
+            setMovimento(null);
+            setFicha(null);
+          }}
           onSalvo={() => {
             setFicha(null);
             loadLeads(true);

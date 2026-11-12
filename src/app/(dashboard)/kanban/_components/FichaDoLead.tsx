@@ -117,9 +117,12 @@ export interface FichaDoLeadProps {
   atividadesLigadas?: boolean;
   papel?: PapelEtapa;
   onAdiar?: () => void;
-  abaInicial?: "dados" | "historico" | "atividades";
+  abaInicial?: "dados" | "historico" | "acoes" | "atividades" | "vendas";
   pedidoConsulta?: number;
+  tipoInicial?: TipoDeAtividade;
   onAtividadeMudou?: () => void;
+  onConcluirMovimento?: (corpo: { tipo: string; descricao: string; vence_em: string; duracao_min?: number; lembrar_antes_min?: number }) => Promise<void>;
+  acaoDoMovimento?: string;
   onFechar: () => void;
   onSalvo: () => void;
   onExcluir: () => void;
@@ -137,7 +140,10 @@ export function FichaDoLead({
   onAdiar,
   abaInicial = "dados",
   pedidoConsulta = 0,
+  tipoInicial,
   onAtividadeMudou,
+  onConcluirMovimento,
+  acaoDoMovimento,
   onFechar,
   onSalvo,
   onExcluir,
@@ -147,24 +153,20 @@ export function FichaDoLead({
   const idTitulo = `${base}-titulo`;
   const idAbaDados = `${base}-aba-dados`;
   const idAbaHistorico = `${base}-aba-historico`;
+  const idAbaAcoes = `${base}-aba-acoes`;
   const idAbaAtividades = `${base}-aba-atividades`;
+  const idAbaVendas = `${base}-aba-vendas`;
   const idPainelDados = `${base}-painel-dados`;
   const idPainelHistorico = `${base}-painel-historico`;
+  const idPainelAcoes = `${base}-painel-acoes`;
   const idPainelAtividades = `${base}-painel-atividades`;
-  const abaDePartida = abaInicial === "atividades" && atividadesLigadas ? "atividades" : abaInicial === "historico" ? "historico" : "dados";
-  const [aba, setAba] = useState<"dados" | "historico" | "atividades">(abaDePartida);
-  const [pedido, setPedido] = useState(pedidoConsulta);
+  const idPainelVendas = `${base}-painel-vendas`;
+  const abasDaFlag = new Set(["acoes", "atividades", "vendas"]);
+  const abaDePartida = atividadesLigadas && abasDaFlag.has(abaInicial)
+    ? abaInicial
+    : abaInicial === "historico" ? "historico" : "dados";
+  const [aba, setAba] = useState<"dados" | "historico" | "acoes" | "atividades" | "vendas">(abaDePartida);
 
-  useEffect(() => {
-    if (!atividadesLigadas || pedidoConsulta === 0) return;
-    setAba("atividades");
-    setPedido(pedidoConsulta);
-  }, [atividadesLigadas, pedidoConsulta]);
-
-  const agendarConsulta = () => {
-    setAba("atividades");
-    setPedido((atual) => atual + 1);
-  };
   const adiarFlag = useFlag("crm-adiar");
   const atividadesFlag = useFlag("crm-atividades");
   const adiarLigado = adiarFlag && atividadesFlag;
@@ -225,27 +227,16 @@ export function FichaDoLead({
             Histórico
           </button>
           {atividadesLigadas && (
-            <button
-              type="button"
-              role="tab"
-              id={idAbaAtividades}
-              aria-selected={aba === "atividades"}
-              aria-controls={idPainelAtividades}
-              onClick={() => setAba("atividades")}
-              className={`py-3 text-sm font-bold ${aba === "atividades" ? "border-b-2 border-brand-blue text-brand-blue" : "text-gray-500"}`}
-            >
-              Atividades
-            </button>
+            <>
+              <button type="button" role="tab" id={idAbaAcoes} aria-selected={aba === "acoes"} aria-controls={idPainelAcoes} onClick={() => setAba("acoes")} className={`py-3 text-sm font-bold ${aba === "acoes" ? "border-b-2 border-brand-blue text-brand-blue" : "text-gray-500"}`}>Ações</button>
+              <button type="button" role="tab" id={idAbaAtividades} aria-selected={aba === "atividades"} aria-controls={idPainelAtividades} onClick={() => setAba("atividades")} className={`py-3 text-sm font-bold ${aba === "atividades" ? "border-b-2 border-brand-blue text-brand-blue" : "text-gray-500"}`}>Atividades</button>
+              <button type="button" role="tab" id={idAbaVendas} aria-selected={aba === "vendas"} aria-controls={idPainelVendas} onClick={() => setAba("vendas")} className={`py-3 text-sm font-bold ${aba === "vendas" ? "border-b-2 border-brand-blue text-brand-blue" : "text-gray-500"}`}>Vendas</button>
+            </>
           )}
         </div>
 
-        {(atividadesLigadas && podeEditar) || mostrarAdiar ? (
+        {mostrarAdiar ? (
           <div className="flex shrink-0 flex-col gap-2 border-b px-6 py-3">
-            {atividadesLigadas && podeEditar && (
-              <button type="button" onClick={agendarConsulta} className="w-full rounded-md bg-brand-blue p-3 text-sm font-bold text-white">
-                Agendar consulta
-              </button>
-            )}
             {mostrarAdiar && (
               <button type="button" onClick={() => onAdiar?.()} className="w-full rounded-md border border-gray-200 bg-white p-3 text-sm font-bold text-gray-800">
                 Adiar
@@ -275,16 +266,47 @@ export function FichaDoLead({
           podeEditar={podeEditar}
         />
         {atividadesLigadas && (
-          <AbaAtividades
-            id={idPainelAtividades}
-            rotuloId={idAbaAtividades}
-            ativa={aba === "atividades"}
-            leadId={lead.id}
-            tenantId={tenantId}
-            podeEditar={podeEditar}
-            pedidoConsulta={pedido}
-            onMudou={onAtividadeMudou}
-          />
+          <>
+            <AbaAtividades
+              id={idPainelAcoes}
+              rotuloId={idAbaAcoes}
+              ativa={aba === "acoes"}
+              parte="formulario"
+              leadId={lead.id}
+              tenantId={tenantId}
+              podeEditar={podeEditar}
+              pedidoConsulta={pedidoConsulta}
+              tipoInicial={tipoInicial}
+              acaoDoMovimento={acaoDoMovimento}
+              onConcluirMovimento={onConcluirMovimento}
+              onMudou={onAtividadeMudou}
+            />
+            <AbaAtividades
+              id={idPainelAtividades}
+              rotuloId={idAbaAtividades}
+              ativa={aba === "atividades"}
+              parte="lista"
+              leadId={lead.id}
+              tenantId={tenantId}
+              podeEditar={podeEditar}
+              pedidoConsulta={0}
+              onMudou={onAtividadeMudou}
+            />
+            <AbaVendas
+              id={idPainelVendas}
+              rotuloId={idAbaVendas}
+              ativa={aba === "vendas"}
+              lead={lead}
+              podeEditar={podeEditar}
+              onRegistrar={async (valor, data) => {
+                if (acaoDoMovimento === "venda" && onConcluirMovimento) {
+                  await onConcluirMovimento({ tipo: "venda", descricao: String(valor), vence_em: data });
+                  return;
+                }
+                await LeadService.addSale(lead.id, valor, data, tenantId, true);
+              }}
+            />
+          </>
         )}
       </div>
     </div>
@@ -785,19 +807,27 @@ function AbaAtividades({
   id,
   rotuloId,
   ativa,
+  parte,
   leadId,
   tenantId,
   podeEditar,
   pedidoConsulta,
+  tipoInicial,
+  acaoDoMovimento,
+  onConcluirMovimento,
   onMudou,
 }: {
   id: string;
   rotuloId: string;
   ativa: boolean;
+  parte: "formulario" | "lista";
   leadId: string;
   tenantId: string;
   podeEditar: boolean;
   pedidoConsulta: number;
+  tipoInicial?: TipoDeAtividade;
+  acaoDoMovimento?: string;
+  onConcluirMovimento?: (corpo: { tipo: string; descricao: string; vence_em: string; duracao_min?: number; lembrar_antes_min?: number }) => Promise<void>;
   onMudou?: () => void;
 }) {
   const pedido = useRef(0);
@@ -815,15 +845,9 @@ function AbaAtividades({
   const base = useId();
 
   useEffect(() => {
-    if (pedidoConsulta === 0) return;
-    setTipo("consulta");
-    setDescricao("");
-    setData("");
-    setHora("");
-    setDuracao("");
-    setLembrete("");
-    setErro(null);
-  }, [pedidoConsulta]);
+    if (parte !== "formulario") return;
+    if (tipoInicial) setTipo(tipoInicial);
+  }, [parte, tipoInicial, pedidoConsulta]);
 
   useEffect(() => {
     if (!ativa) return;
@@ -866,8 +890,12 @@ function AbaAtividades({
       ...(lembrete !== "" ? { lembrar_antes_min: Number(lembrete) } : {}),
     };
     try {
-      const criada = await AtividadeService.criar(leadId, tenantId, corpo);
-      setItens((atual) => ordenarPorVencimento([criada, ...atual.filter((item) => item.id !== criada.id)]));
+      if (onConcluirMovimento && acaoDoMovimento && tipo === acaoDoMovimento) {
+        await onConcluirMovimento(corpo);
+      } else {
+        const criada = await AtividadeService.criar(leadId, tenantId, corpo);
+        setItens((atual) => ordenarPorVencimento([criada, ...atual.filter((item) => item.id !== criada.id)]));
+      }
       setTipo("consulta");
       setDescricao("");
       setData("");
@@ -905,7 +933,7 @@ function AbaAtividades({
   return (
     <div role="tabpanel" id={id} aria-labelledby={rotuloId} hidden={!ativa} className="flex-1 overflow-y-auto px-6 py-4">
       {erro && <p role="alert" className="mb-4 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">{erro}</p>}
-      {podeEditar && (
+      {parte === "formulario" && podeEditar && (
         <form aria-label="Nova atividade" onSubmit={registrar} noValidate className="mb-6 space-y-3">
           <div>
             <label htmlFor={`${base}-tipo`} className="text-xs font-bold uppercase text-gray-500">Tipo</label>
@@ -979,10 +1007,10 @@ function AbaAtividades({
         </form>
       )}
 
-      {carregando && itens.length === 0 && <p>Carregando atividades…</p>}
-      {!carregando && itens.length === 0 && !erro && <p className="py-4 text-center text-sm italic text-gray-400">Nenhuma atividade registrada.</p>}
+      {parte === "lista" && carregando && itens.length === 0 && <p>Carregando atividades…</p>}
+      {parte === "lista" && !carregando && itens.length === 0 && !erro && <p className="py-4 text-center text-sm italic text-gray-400">Nenhuma atividade registrada.</p>}
 
-      <div className="space-y-3">
+      {parte === "lista" && <div className="space-y-3">
         {itens.map((item) => {
           const rotulo = rotuloDaAtividade(item.tipo);
           const lembreteItem = rotuloDoLembrete(item.lembrar_antes_min);
@@ -1003,7 +1031,74 @@ function AbaAtividades({
             </article>
           );
         })}
-      </div>
+      </div>}
+    </div>
+  );
+}
+
+function AbaVendas({
+  id,
+  rotuloId,
+  ativa,
+  lead,
+  podeEditar,
+  onRegistrar,
+}: {
+  id: string;
+  rotuloId: string;
+  ativa: boolean;
+  lead: FichaLead;
+  podeEditar: boolean;
+  onRegistrar: (valor: number, data: string) => Promise<void>;
+}) {
+  const [valor, setValor] = useState("");
+  const [data, setData] = useState("");
+  const [erro, setErro] = useState<string | null>(null);
+  const [ocupado, setOcupado] = useState(false);
+  const vendas = lead.sales ?? [];
+
+  const registrar = async (evento: FormEvent) => {
+    evento.preventDefault();
+    const numero = Number(valor.replace(",", "."));
+    if (!data || !(numero > 0)) {
+      setErro("Informe o valor e a data.");
+      return;
+    }
+    setOcupado(true);
+    setErro(null);
+    try {
+      await onRegistrar(numero, data);
+      setValor("");
+      setData("");
+    } catch (err) {
+      setErro(mensagemDeErro(err, "Não foi possível registrar a venda."));
+    } finally {
+      setOcupado(false);
+    }
+  };
+
+  return (
+    <div role="tabpanel" id={id} aria-labelledby={rotuloId} hidden={!ativa} className="flex-1 overflow-y-auto px-6 py-4">
+      {erro && <p role="alert" className="mb-4 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">{erro}</p>}
+      {podeEditar && (
+        <form aria-label="Nova venda" onSubmit={registrar} className="mb-6 space-y-3">
+          <div>
+            <label htmlFor={`${id}-valor`} className="text-xs font-bold uppercase text-gray-500">Valor</label>
+            <input id={`${id}-valor`} value={valor} onChange={(evento) => setValor(evento.target.value)} className="mt-1 w-full rounded-md border p-2" />
+          </div>
+          <div>
+            <label htmlFor={`${id}-data`} className="text-xs font-bold uppercase text-gray-500">Data</label>
+            <input id={`${id}-data`} type="date" value={data} onChange={(evento) => setData(evento.target.value)} className="mt-1 w-full rounded-md border p-2" />
+          </div>
+          <button type="submit" disabled={ocupado} className="w-full rounded-md bg-brand-blue p-3 font-bold text-white disabled:opacity-50">Registrar venda</button>
+        </form>
+      )}
+      {vendas.length > 0 ? vendas.map((venda) => (
+        <article key={venda.id} aria-label={`Venda ${formatarReais(venda.valor)}`} className="mb-2 rounded-md border p-3">
+          <p className="text-xs text-gray-500">{dataDaVenda(venda.data)}</p>
+          <p className="font-bold text-green-700">{formatarReais(venda.valor)}</p>
+        </article>
+      )) : <p className="py-4 text-center text-sm italic text-gray-400">Nenhuma venda registrada.</p>}
     </div>
   );
 }
