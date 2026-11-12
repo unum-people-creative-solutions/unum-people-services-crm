@@ -296,6 +296,7 @@ describe('Atividades no quadro (ATV-06)', () => {
     const corpo = (AtividadeService.criar as ReturnType<typeof vi.fn>).mock.calls[0][2];
     expect(corpo.lembrar_antes_min).toBeUndefined();
     expect(LeadService.updateStatus).not.toHaveBeenCalled();
+    expect(within(dialog).getByRole('tab', { name: 'Atividades' })).toHaveAttribute('aria-selected', 'true');
   });
 
   it('Na hora manda lembrar_antes_min 0; 1 hora manda 60', async () => {
@@ -320,6 +321,7 @@ describe('Atividades no quadro (ATV-06)', () => {
       lembrar_antes_min: 0,
     }));
 
+    await user.click(within(dialog).getByRole('tab', { name: 'Ações' }));
     const deNovo = within(dialog).getByRole('form', { name: 'Nova atividade' });
     await user.selectOptions(within(deNovo).getByRole('combobox', { name: 'Tipo' }), 'email');
     await user.selectOptions(within(deNovo).getByRole('combobox', { name: 'Lembrete' }), '60');
@@ -467,6 +469,12 @@ describe('Atividades no quadro (ATV-06)', () => {
     expect(within(dialog).getByRole('article', { name: /Venda R\$\s*150,00/ })).toBeInTheDocument();
     expect(within(dialog).getByRole('form', { name: 'Nova venda' })).toBeInTheDocument();
     expect(within(dialog).getByRole('button', { name: 'Registrar venda' })).toBeInTheDocument();
+    const venda = within(dialog).getByRole('form', { name: 'Nova venda' });
+    fireEvent.change(within(venda).getByLabelText('Valor'), { target: { value: '80' } });
+    fireEvent.change(within(venda).getByLabelText('Data'), { target: { value: '2026-11-12' } });
+    await user.click(within(venda).getByRole('button', { name: 'Registrar venda' }));
+    await waitFor(() => expect(LeadService.addSale).toHaveBeenCalled());
+    expect(within(dialog).getByRole('tab', { name: 'Vendas' })).toHaveAttribute('aria-selected', 'true');
   });
 
   it('coluna sem ação só muda o cartão e não abre a ficha', async () => {

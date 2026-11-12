@@ -281,6 +281,7 @@ export function FichaDoLead({
               acaoDoMovimento={acaoDoMovimento}
               onConcluirMovimento={onConcluirMovimento}
               onMudou={onAtividadeMudou}
+              onRegistrada={() => setAba("atividades")}
             />
             <AbaAtividades
               id={idPainelAtividades}
@@ -819,6 +820,7 @@ function AbaAtividades({
   acaoDoMovimento,
   onConcluirMovimento,
   onMudou,
+  onRegistrada,
 }: {
   id: string;
   rotuloId: string;
@@ -832,6 +834,7 @@ function AbaAtividades({
   acaoDoMovimento?: string;
   onConcluirMovimento?: (corpo: { tipo: string; descricao: string; vence_em: string; duracao_min?: number; lembrar_antes_min?: number }) => Promise<void>;
   onMudou?: () => void;
+  onRegistrada?: () => void;
 }) {
   const pedido = useRef(0);
   const enviando = useRef(false);
@@ -906,6 +909,7 @@ function AbaAtividades({
       setDuracao("");
       setLembrete("");
       onMudou?.();
+      onRegistrada?.();
     } catch (err) {
       setErro(mensagemDaAtividade(err, false));
     } finally {
