@@ -255,10 +255,16 @@ function funilCom(n: number): Funil {
   };
 }
 
+async function clicarEditarFunil(user: ReturnType<typeof userEvent.setup>) {
+  await user.click(screen.getByRole('button', { name: /Menu Principal/i }));
+  const [botao] = await screen.findAllByRole('button', { name: 'Editar funil' });
+  await user.click(botao);
+}
+
 async function abrirEdicao() {
   const user = userEvent.setup();
   renderKanban();
-  await user.click(await screen.findByRole('button', { name: 'Editar funil' }));
+  await clicarEditarFunil(user);
   await screen.findByRole('textbox', { name: 'Nome da coluna Novos Leads' });
   return user;
 }
@@ -284,7 +290,9 @@ describe('Modo de edição (T25, T26, T27)', () => {
     (AcessosService.get as any).mockResolvedValue(acessos(permissao ? COM_EDICAO : GESTOR));
     renderKanban();
     await screen.findByRole('button', { name: 'Editar lead' });
-    if (visivel) expect(screen.getByRole('button', { name: 'Editar funil' })).toBeEnabled();
+    const user = userEvent.setup();
+    await user.click(screen.getByRole('button', { name: /Menu Principal/i }));
+    if (visivel) expect(screen.getAllByRole('button', { name: 'Editar funil' }).length).toBeGreaterThan(0);
     else expect(screen.queryByRole('button', { name: 'Editar funil' })).not.toBeInTheDocument();
   });
 
@@ -300,7 +308,7 @@ describe('Modo de edição (T25, T26, T27)', () => {
     await screen.findByText('Um');
     await screen.findByText('Dois');
     const user = userEvent.setup();
-    await user.click(screen.getByRole('button', { name: 'Editar funil' }));
+    await clicarEditarFunil(user);
     await screen.findByRole('textbox', { name: 'Nome da coluna Novos Leads' });
 
     expect(screen.getByRole('textbox', { name: 'Nome da coluna Em Atendimento' })).toHaveValue('Em Atendimento');
@@ -480,7 +488,7 @@ describe('Arrastar coluna (T28)', () => {
     expect(dnd.listas.some((lista) => lista.id === 'funil')).toBe(false);
 
     const user = userEvent.setup();
-    await user.click(screen.getByRole('button', { name: 'Editar funil' }));
+    await clicarEditarFunil(user);
     await screen.findByRole('textbox', { name: 'Nome da coluna Novos Leads' });
 
     expect(dnd.listas.filter((lista) => lista.id === 'funil').at(-1)).toMatchObject({ type: 'COLUMN', direction: 'horizontal' });

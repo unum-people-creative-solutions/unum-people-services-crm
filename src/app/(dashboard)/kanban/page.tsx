@@ -3,10 +3,12 @@
 import { Fragment, useEffect, useState, useRef, Suspense, useCallback } from "react";
 import { useSearchParams } from "next/navigation";
 import { DragDropContext, Droppable, Draggable } from "@hello-pangea/dnd";
-import api, { FunilService, LeadService, TenantService, LeadData, LeadSale, MonthSale, mensagemDeErro, GoogleAgendaService, type AgendamentoNoGoogle, type PapelEtapa } from "@/services/api";
+import api, { AtividadeService, FunilService, LeadService, TenantService, LeadData, LeadSale, MonthSale, mensagemDeErro, GoogleAgendaService, type AgendamentoNoGoogle, type Atividade, type PapelEtapa } from "@/services/api";
 import { useFunil } from "@/hooks/useFunil";
 import { adicionar, iniciar, mover, moverParaDireita, moverParaEsquerda, paraPedido, podeAdicionar, remover, renomear, type Rascunho } from "@/lib/editorDoFunil";
 import { BarraDoEditor, BotaoAdicionar, BotaoRemover, ColunaArrastavel, FaixaDoFunil, mensagemDeErroDoFunil, NomeDaColuna, SetasDaColuna } from "./_components/EditorDoFunil";
+import { FichaDoLead } from "./_components/FichaDoLead";
+import { AdiarLead, type PedidoDeAdiar } from "./_components/AdiarLead";
 import { useAuthStore } from "@/store/authStore";
 import { useTenant } from "@/contexts/TenantContext";
 import { useAcessosDoCRM } from "@/contexts/AcessosContext";
@@ -30,6 +32,8 @@ import { z } from "zod";
 import { StatusAdsDaVenda } from "@/components/StatusAdsDaVenda";
 import { AgendamentoModal } from "@/components/AgendamentoModal";
 import { corDeInatividade, formatarAgendamento, linkDeLembrete, mensagemDeLembrete, ordenarAgendados, referenciaDeInatividade } from "@/lib/agendamento";
+import { proximaPendente, rotuloDaAtividade, temPendenteHoje, temPendenteNoFuturo } from "@/lib/atividades";
+import { mensagemDoAdiar, retomarPendenteNoFuturo } from "@/lib/adiar";
 
 type LeadFormValues = z.infer<typeof leadSchema>;
 
@@ -73,13 +77,15 @@ const parseSafeDate = (dateStr: any) => {
 
 // Helper para Inatividade: a cor vem da regra única (lib/agendamento, D-AG-7),
 // contada a partir da referência (em "Agendados", o maior entre updated_at e agendado_em).
-const getInactivityStatus = (lead: any, columnId: string, papel?: PapelEtapa) => {
+const getInactivityStatus = (lead: any, columnId: string, papel?: PapelEtapa, isento = false) => {
   // Cores (Classes completas para o Tailwind extrair)
   const BLUE = "bg-blue-600";
   const ORANGE = "bg-orange-500";
   const RED = "bg-red-600";
 
   const defaultStatus = { color: BLUE, animate: false, message: "", showTooltip: false };
+  // Atividade pendente no futuro: o lead não conta como parado (D-F3-6).
+  if (isento) return defaultStatus;
 
   const now = new Date();
   const cor = corDeInatividade(lead, columnId, now, papel);
@@ -130,6 +136,11 @@ function KanbanContent() {
   // Google Agenda (spec crm-google-agenda RF-28): só com crm-google-agenda e crm-agendamento ligadas.
   const googleAgendaFlag = useFlag("crm-google-agenda");
   const googleAgendaLigada = agendamentoLigado && googleAgendaFlag;
+  // INT-13: desligada, o lápis segue no modal de hoje. INT-12: ligada, abre a gaveta.
+  const interacoesLigadas = useFlag("crm-interacoes");
+  // ATV-06: desligada, o quadro e o modal de agendamento de hoje permanecem.
+  const atividadesLigadas = useFlag("crm-atividades");
+  const adiarLigado = useFlag("crm-adiar") && atividadesLigadas;
 
   // Colunas vêm do funil da empresa (FUN-02). Sem funil, o quadro não inventa o padrão (FUN-03).
   const { funil, erro: erroFunil, recarregar, substituir } = useFunil();
@@ -191,6 +202,26 @@ function KanbanContent() {
   // Modais
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [ficha, setFicha] = useState<any>(null);
+  const [fichaPedido, setFichaPedido] = useState<{ aba: "dados" | "historico" | "atividades"; consulta: number }>({ aba: "dados", consulta: 0 });
+  const [atividadesPorLead, setAtividadesPorLead] = useState<Record<string, Atividade[]>>({});
+  const [erroAtividades, setErroAtividades] = useState<string | null>(null);
+  const [soHoje, setSoHoje] = useState(false);
+  const [soAdiados, setSoAdiados] = useState(false);
+  const [adiarAlvo, setAdiarAlvo] = useState<{ id: string } | null>(null);
+  const [erroAdiar, setErroAdiar] = useState<string | null>(null);
+  const [enviandoAdiar, setEnviandoAdiar] = useState(false);
+  const enviandoAdiarRef = useRef(false);
+  const [erroRetomar, setErroRetomar] = useState<string | null>(null);
+  const [retomandoId, setRetomandoId] = useState<string | null>(null);
+  const retomandoRef = useRef(false);
+  const [versaoAtividades, setVersaoAtividades] = useState(0);
+  const pedidoAtividades = useRef(0);
+  const empresaDaFicha = useRef(activeTenantId);
+  if (empresaDaFicha.current !== activeTenantId) {
+    empresaDaFicha.current = activeTenantId;
+    if (ficha) setFicha(null);
+  }
   const [isSaleModalOpen, setIsSaleModalOpen] = useState(false);
   const [isConfirmModalOpen, setIsConfirmModalOpen] = useState(false);
   const [isNewSaleModalOpen, setIsNewSaleModalOpen] = useState(false);
@@ -475,6 +506,13 @@ function KanbanContent() {
   };
 
   const handleEditClick = (lead: any) => {
+    if (interacoesLigadas) {
+      setIsEditModalOpen(false);
+      setFichaPedido({ aba: "dados", consulta: 0 });
+      setFicha(lead);
+      return;
+    }
+    setFicha(null);
     setEditingLeadId(lead.id);
     setEditingLeadSales(lead.sales || []);
     setEditingLeadStatus(lead.status);
@@ -506,6 +544,16 @@ function KanbanContent() {
     if (lead) abrirLeadRef.current(lead);
   }, [leadPedido, loading, leadPedidoTratado, boardData]);
 
+  // A flag chega depois do quadro: o ?lead= que abriu o modal passa para a gaveta.
+  useEffect(() => {
+    if (!interacoesLigadas || !isEditModalOpen || !editingLeadId) return;
+    const lead = (Object.values(boardData).flat() as any[]).find((l) => l?.id === editingLeadId);
+    if (!lead) return;
+    setIsEditModalOpen(false);
+    setFichaPedido({ aba: "dados", consulta: 0 });
+    setFicha(lead);
+  }, [interacoesLigadas, isEditModalOpen, editingLeadId, boardData]);
+
   const handleUpdateLead = async (data: LeadFormValues) => {
     if (!editingLeadId) return;
     try {
@@ -522,6 +570,7 @@ function KanbanContent() {
       await LeadService.delete(editingLeadId, activeTenantId);
       setIsDeleteConfirmModalOpen(false);
       setIsEditModalOpen(false);
+      setFicha(null);
       setEditingLeadId(null);
       setDeleteConfirmText("");
       loadLeads(true);
@@ -639,7 +688,57 @@ function KanbanContent() {
     setBoardData((prev: any) => (prev.AGENDADO ? { ...prev, AGENDADO: ordenarAgendados(prev.AGENDADO) } : prev));
   }, [agendamentoLigado]);
 
+  const chaveDosLeads = (Object.values(boardData).flat() as { id?: string }[])
+    .map((lead) => lead?.id)
+    .filter((id): id is string => Boolean(id))
+    .toSorted()
+    .join("\n");
+
+  // Com a flag ligada, cada lead traz as suas atividades para o cartão e o filtro Hoje.
+  useEffect(() => {
+    const pedido = ++pedidoAtividades.current;
+    if (!atividadesLigadas || !activeTenantId) {
+      setAtividadesPorLead((atual) => (Object.keys(atual).length === 0 ? atual : {}));
+      setErroAtividades((atual) => (atual ? null : atual));
+      return;
+    }
+    if (!chaveDosLeads) {
+      setAtividadesPorLead((atual) => (Object.keys(atual).length === 0 ? atual : {}));
+      return;
+    }
+    let cancelado = false;
+    const ids = chaveDosLeads.split("\n");
+    Promise.all(ids.map(async (id) => {
+      try {
+        const pagina = await AtividadeService.listar(id, activeTenantId);
+        return [id, pagina?.itens ?? []] as const;
+      } catch (err) {
+        console.error(err);
+        return [id, null] as const;
+      }
+    })).then((pares) => {
+      if (cancelado || pedido !== pedidoAtividades.current) return;
+      const proximo: Record<string, Atividade[]> = {};
+      let falhou = false;
+      for (const [id, itens] of pares) {
+        if (itens === null) falhou = true;
+        else proximo[id] = itens;
+      }
+      setAtividadesPorLead(proximo);
+      setErroAtividades(falhou ? "Não foi possível carregar as atividades." : null);
+    });
+    return () => {
+      cancelado = true;
+    };
+  }, [atividadesLigadas, activeTenantId, chaveDosLeads, versaoAtividades]);
+
   // Mover: o horário atual só preenche o modal se ainda for futuro (blueprint §2.1).
+  const abrirConsulta = (lead: any) => {
+    setIsEditModalOpen(false);
+    setFichaPedido((atual) => ({ aba: "atividades", consulta: atual.consulta + 1 }));
+    setFicha(lead);
+  };
+
   const abrirAgendamento = (lead: any, modo: "mover" | "alterar") => {
     const atual: string | undefined = lead?.agendado_em;
     const futuro = !!atual && Date.parse(atual) > Date.now();
@@ -796,8 +895,8 @@ function KanbanContent() {
     const newBoardData = { ...boardData };
     const sourceLeads = Array.from(boardData[source.droppableId] || []);
     const destLeads = Array.from(boardData[destination.droppableId] || []);
-    
-    const [movedLead] = sourceLeads.splice(source.index, 1);
+    const fromIndex = sourceLeads.findIndex((lead: any) => lead?.id === draggableId);
+    const [movedLead] = sourceLeads.splice(fromIndex >= 0 ? fromIndex : source.index, 1);
     if (movedLead) {
       const updatedLead = { ...movedLead, status: destination.droppableId };
       destLeads.splice(destination.index, 0, updatedLead);
@@ -817,7 +916,8 @@ function KanbanContent() {
       return;
     }
     // "Agendados" pede data e hora, de qualquer coluna (substitui o "Mover para trás?").
-    if (agendamentoLigado && destination.droppableId === "AGENDADO") {
+    // Com crm-atividades, mover para a coluna de papel agendado não abre este modal.
+    if (agendamentoLigado && !atividadesLigadas && destination.droppableId === "AGENDADO") {
       if (movedLead) abrirAgendamento(movedLead, "mover");
       return;
     }
@@ -838,12 +938,76 @@ function KanbanContent() {
     await executeMove(draggableId, destination.droppableId);
   };
 
+  const abrirAdiar = (lead: { id: string }) => {
+    setErroAdiar(null);
+    setAdiarAlvo({ id: lead.id });
+  };
+
+  const confirmarAdiar = async (pedido: PedidoDeAdiar) => {
+    if (!adiarAlvo || enviandoAdiarRef.current) return;
+    const leadId = adiarAlvo.id;
+    enviandoAdiarRef.current = true;
+    setEnviandoAdiar(true);
+    setErroAdiar(null);
+    try {
+      const criada = await LeadService.adiar(leadId, activeTenantId || undefined, pedido);
+      setAtividadesPorLead((atual) => {
+        const itens = atual[leadId] ?? [];
+        const restantes = itens.filter((item) => item.id !== criada.id && !(item.tipo === "retomar" && item.situacao === "pendente"));
+        return { ...atual, [leadId]: [criada, ...restantes] };
+      });
+      setAdiarAlvo(null);
+    } catch (err) {
+      console.error(err);
+      setErroAdiar(mensagemDoAdiar(err));
+    } finally {
+      enviandoAdiarRef.current = false;
+      setEnviandoAdiar(false);
+    }
+  };
+
+  const retomarAgora = async (leadId: string, atividadeId: string) => {
+    if (retomandoRef.current) return;
+    retomandoRef.current = true;
+    setRetomandoId(atividadeId);
+    setErroRetomar(null);
+    try {
+      const atualizada = await AtividadeService.concluir(leadId, atividadeId, activeTenantId || undefined);
+      setAtividadesPorLead((atual) => ({
+        ...atual,
+        [leadId]: (atual[leadId] ?? []).map((item) => (item.id === atividadeId ? atualizada : item)),
+      }));
+    } catch (err) {
+      console.error(err);
+      setErroRetomar("Não foi possível retomar. Tente de novo.");
+    } finally {
+      retomandoRef.current = false;
+      setRetomandoId(null);
+    }
+  };
+
+  const agoraQuadro = new Date();
+  const leadEstaAdiado = (lead: { id: string }) => retomarPendenteNoFuturo(atividadesPorLead[lead.id], agoraQuadro) !== null;
+  const quantidadeAdiados = adiarLigado
+    ? (Object.values(boardData).flat() as { id?: string }[]).filter((lead) => lead?.id && leadEstaAdiado({ id: lead.id })).length
+    : 0;
+  const leadsDaColuna = (col: ColunaQuadro) => {
+    const todos = boardData[col.id] || [];
+    if (editando) return todos;
+    if (adiarLigado && soAdiados) return todos.filter((lead: { id: string }) => leadEstaAdiado(lead));
+    const visiveis = adiarLigado ? todos.filter((lead: { id: string }) => !leadEstaAdiado(lead)) : todos;
+    if (!atividadesLigadas || !soHoje) return visiveis;
+    if (col.papel === "ganho" || col.papel === "perdido") return [];
+    return visiveis.filter((lead: any) => temPendenteHoje(atividadesPorLead[lead.id], agoraQuadro));
+  };
+
   return (
     <div className="h-screen flex flex-col bg-gray-50 text-gray-900 font-sans overflow-hidden">
       <Navbar 
         onRefresh={() => loadLeads()}
         onNewLead={pode("crm.lead.criar") ? () => setIsModalOpen(true) : undefined}
         onNewSale={podeEditar ? () => setIsNewSaleModalOpen(true) : undefined}
+        onEditarFunil={podeEditarFunil && funil && !erroFunil && !editando ? entrarNaEdicao : undefined}
       >
         <div className="hidden md:flex items-center gap-3">
 
@@ -932,6 +1096,16 @@ function KanbanContent() {
             Não foi possível carregar suas permissões nesta empresa.
           </p>
         )}
+        {erroAtividades && (
+          <p role="alert" className="mx-4 md:mx-0 mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-800">
+            {erroAtividades}
+          </p>
+        )}
+        {erroRetomar && (
+          <p role="alert" className="mx-4 md:mx-0 mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-800">
+            {erroRetomar}
+          </p>
+        )}
         {avisoAgendaFalhou && (
           <div role="alert" className="mb-4 mx-4 md:mx-0 flex items-start justify-between gap-3 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-medium text-amber-800">
             <p>Agendado no CRM, mas não foi possível pôr na sua agenda.</p>
@@ -956,8 +1130,7 @@ function KanbanContent() {
           </div>
         )}
 
-        {podeEditarFunil && funil && !erroFunil && (
-          editando ? (
+        {podeEditarFunil && funil && !erroFunil && editando && (
             <BarraDoEditor
               erro={erroEditor}
               salvando={salvandoFunil}
@@ -965,11 +1138,6 @@ function KanbanContent() {
               onCancelar={cancelarEdicao}
               onRecarregar={recarregarConflito}
             />
-          ) : (
-            <button type="button" onClick={entrarNaEdicao} className="mb-4 mx-4 md:mx-0 rounded-lg bg-white px-4 py-2 text-sm font-bold text-gray-800 border border-gray-200">
-              Editar funil
-            </button>
-          )
         )}
         {colunaSumiu && (
           <div role="alert" className="mx-4 md:mx-0 mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-800">
@@ -984,12 +1152,35 @@ function KanbanContent() {
             </button>
           </div>
         ) : (
+        <>
+        {atividadesLigadas && (
+          <div className="mb-4 mx-4 md:mx-0 flex flex-wrap gap-2">
+            <button
+              type="button"
+              aria-pressed={soHoje}
+              onClick={() => setSoHoje((atual) => !atual)}
+              className={`rounded-lg border px-4 py-2 text-sm font-bold ${soHoje ? "border-brand-blue bg-brand-blue text-white" : "border-gray-200 bg-white text-gray-800"}`}
+            >
+              Hoje
+            </button>
+            {adiarLigado && (
+              <button
+                type="button"
+                aria-pressed={soAdiados}
+                onClick={() => setSoAdiados((atual) => !atual)}
+                className={`rounded-lg border px-4 py-2 text-sm font-bold ${soAdiados ? "border-brand-blue bg-brand-blue text-white" : "border-gray-200 bg-white text-gray-800"}`}
+              >
+                {`Adiados (${quantidadeAdiados})`}
+              </button>
+            )}
+          </div>
+        )}
         <DragDropContext onDragEnd={onDragEnd}>
           <FaixaDoFunil editando={editando}>
             {colunas.map((col, indice) => (
               <Fragment key={col.chave}>
               <ColunaArrastavel editando={editando} chave={col.chave} indice={indice} arrastavel={col.movivel && !isMobile}>
-              <div role="region" aria-label={col.title} className="w-[85vw] md:w-72 flex flex-col bg-gray-200/50 rounded-lg p-3 max-h-full flex-shrink-0 snap-center border border-gray-200/50 md:border-transparent shadow-sm md:shadow-none">
+              <div role="region" aria-label={col.title} className="w-[85vw] md:w-72 h-full flex flex-col bg-gray-200/50 rounded-lg p-3 max-h-full flex-shrink-0 snap-center border border-gray-200/50 md:border-transparent shadow-sm md:shadow-none">
                 {editando ? (
                   <div className="mb-4 flex flex-col gap-2">
                     {col.movivel && (
@@ -1007,13 +1198,13 @@ function KanbanContent() {
                   </div>
                 ) : (
                 <h2 className="font-bold text-gray-700 mb-4 px-1 flex justify-between items-center uppercase text-[10px] tracking-widest shrink-0">
-                  {col.title} <span className="bg-gray-300 text-[10px] py-0.5 px-2 rounded-full">{boardData[col.id]?.length || 0}</span>
+                  {col.title} <span className="bg-gray-300 text-[10px] py-0.5 px-2 rounded-full">{leadsDaColuna(col).length}</span>
                 </h2>
                 )}
                 <Droppable droppableId={col.id}>
                   {(provided) => (
                     <div {...provided.droppableProps} ref={provided.innerRef} className="flex-1 overflow-y-auto custom-scrollbar pr-1">
-                      {boardData[col.id]?.map((lead: any, index: number) => {
+                      {leadsDaColuna(col).map((lead: any, index: number) => {
                         const monthSales = lead.sales?.filter((s: any) => {
                           const d = parseSafeDate(s.data);
                           return d.getMonth() === selectedMonth && d.getFullYear() === selectedYear;
@@ -1027,7 +1218,12 @@ function KanbanContent() {
                               // Tenta encontrar a data de atualização mais recente
                               const lastUpdateDate = lead.updated_at || lead.updatedAt || lead.created_at || lead.createdAt;
                               // Flag desligada: a inatividade ignora agendado_em, como antes da feature.
-                              const status = getInactivityStatus(agendamentoLigado ? lead : { ...lead, agendado_em: undefined }, col.id, col.papel);
+                              const status = getInactivityStatus(
+                                agendamentoLigado ? lead : { ...lead, agendado_em: undefined },
+                                col.id,
+                                col.papel,
+                                atividadesLigadas && temPendenteNoFuturo(atividadesPorLead[lead.id], agoraQuadro),
+                              );
                               
                               return (
                                 <div ref={provided.innerRef} {...provided.draggableProps} {...provided.dragHandleProps} className="bg-white rounded shadow-sm mb-3 hover:shadow-md group relative transition-all w-full overflow-hidden border border-gray-100">
@@ -1095,8 +1291,56 @@ function KanbanContent() {
                                       </div>
                                     </div>
 
-                                    {/* Agendamento: só na coluna "Agendados" (blueprint §3) */}
-                                    {agendamentoLigado && col.id === "AGENDADO" && (() => {
+                                    {atividadesLigadas && (() => {
+                                      const proxima = proximaPendente<Atividade>(atividadesPorLead[lead.id]);
+                                      const rotulo = proxima ? rotuloDaAtividade(proxima.tipo) : "";
+                                      const quando = proxima && !Number.isNaN(Date.parse(proxima.vence_em)) ? formatarAgendamento(proxima.vence_em) : proxima?.vence_em;
+                                      return (
+                                        <div className="mt-2 flex flex-col gap-1">
+                                          {proxima && (
+                                            <article aria-label={`Próxima atividade: ${rotulo}`} className="text-xs text-brand-blue">
+                                              <p className="font-bold">{rotulo} {quando}</p>
+                                              {proxima.descricao ? <p className="font-medium text-gray-600">{proxima.descricao}</p> : null}
+                                            </article>
+                                          )}
+                                          {podeEditar && (
+                                            <button
+                                              type="button"
+                                              onClick={(e) => { e.stopPropagation(); abrirConsulta(lead); }}
+                                              className="text-left text-[11px] font-bold text-brand-blue hover:underline rounded focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-blue"
+                                            >
+                                              Agendar consulta
+                                            </button>
+                                          )}
+                                          {adiarLigado && podeEditar && col.papel !== "ganho" && (
+                                            <button
+                                              type="button"
+                                              onClick={(e) => { e.stopPropagation(); abrirAdiar(lead); }}
+                                              className="text-left text-[11px] font-bold text-brand-blue hover:underline rounded focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-blue"
+                                            >
+                                              Adiar
+                                            </button>
+                                          )}
+                                          {adiarLigado && podeEditar && (() => {
+                                            const retomar = retomarPendenteNoFuturo<Atividade>(atividadesPorLead[lead.id], agoraQuadro);
+                                            if (!retomar) return null;
+                                            return (
+                                              <button
+                                                type="button"
+                                                onClick={(e) => { e.stopPropagation(); retomarAgora(lead.id, retomar.id); }}
+                                                disabled={retomandoId === retomar.id}
+                                                className="text-left text-[11px] font-bold text-brand-blue hover:underline rounded focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-blue disabled:opacity-50"
+                                              >
+                                                Retomar agora
+                                              </button>
+                                            );
+                                          })()}
+                                        </div>
+                                      );
+                                    })()}
+
+                                    {/* Agendamento: só na coluna "Agendados" (blueprint §3). Some quando crm-atividades liga. */}
+                                    {agendamentoLigado && !atividadesLigadas && col.id === "AGENDADO" && (() => {
                                       const agendadoEm: string | undefined = lead.agendado_em;
                                       const futuro = !!agendadoEm && Date.parse(agendadoEm) > Date.now();
                                       // Lembrete por WhatsApp (O7): só agendamento futuro e telefone utilizável; nada de anotações.
@@ -1219,6 +1463,7 @@ function KanbanContent() {
             ))}
           </FaixaDoFunil>
         </DragDropContext>
+        </>
         )}
         </>
         )}
@@ -1794,7 +2039,7 @@ function KanbanContent() {
 
                         if (googleAgendaLigada && quickMoveLead.status === "AGENDADO" && col.id !== "GANHO" && quickMoveLead.google_situacao === "ok") {
                           setSaidaDaAgenda({ draggableId: quickMoveLead.id, destinationId: col.id });
-                        } else if (agendamentoLigado && col.id === "AGENDADO") {
+                        } else if (agendamentoLigado && !atividadesLigadas && col.id === "AGENDADO") {
                           abrirAgendamento(quickMoveLead, "mover");
                         } else if (col.id === "GANHO") {
                           setPendingMove(moveData);
@@ -1828,6 +2073,46 @@ function KanbanContent() {
           </motion.div>
         )}
       </AnimatePresence>
+
+      {adiarAlvo && (
+        <AdiarLead
+          enviando={enviandoAdiar}
+          erro={erroAdiar}
+          onCancelar={() => { if (!enviandoAdiarRef.current) setAdiarAlvo(null); }}
+          onConfirmar={confirmarAdiar}
+        />
+      )}
+
+      {ficha && (
+        <FichaDoLead
+          key={`${ficha.id}-${fichaPedido.aba}-${fichaPedido.consulta}`}
+          lead={ficha}
+          tenantId={activeTenantId || ""}
+          emailDaSessao={session?.email || ""}
+          podeEditar={podeEditar}
+          podeExcluir={pode("crm.lead.excluir")}
+          atividadesLigadas={atividadesLigadas}
+          papel={colunas.find((coluna) => coluna.id === ficha.status)?.papel}
+          onAdiar={() => abrirAdiar(ficha)}
+          abaInicial={fichaPedido.aba}
+          pedidoConsulta={fichaPedido.consulta}
+          onAtividadeMudou={() => setVersaoAtividades((valor) => valor + 1)}
+          onFechar={() => setFicha(null)}
+          onSalvo={() => {
+            setFicha(null);
+            loadLeads(true);
+          }}
+          onExcluir={() => {
+            setEditingLeadId(ficha.id);
+            setIsDeleteConfirmModalOpen(true);
+          }}
+          onRegistrarVenda={() => {
+            setSelectedCustomer(ficha);
+            setIsNewSaleModalOpen(true);
+            setFicha(null);
+          }}
+        />
+      )}
 
       {/* Modal de Confirmação de Exclusão */}
       <AnimatePresence>

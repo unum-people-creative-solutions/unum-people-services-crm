@@ -20,6 +20,7 @@ interface NavbarProps {
   newLeadLabel?: string;
   onNewSale?: () => void;
   newSaleLabel?: string;
+  onEditarFunil?: () => void;
   children?: React.ReactNode; 
 }
 
@@ -29,6 +30,7 @@ export default function Navbar({
   newLeadLabel = "Novo Lead Manual",
   onNewSale,
   newSaleLabel = "Registrar Nova Venda",
+  onEditarFunil,
   children 
 }: NavbarProps) {
   const { session, logout } = useAuthStore();
@@ -206,7 +208,7 @@ export default function Navbar({
 
                         <div className="space-y-8">
                           {/* Seção: Ações de Vendas/Leads */}
-                          {(onNewLead || onNewSale) && (
+                          {(onNewLead || onNewSale || onEditarFunil) && (
                             <div className="space-y-4">
                               <div className="text-[12px] font-black text-gray-400 uppercase tracking-[0.2em] flex items-center gap-2">
                                 <Plus size={14} /> Operação
@@ -220,6 +222,11 @@ export default function Navbar({
                                 {onNewSale && (
                                   <button onClick={() => { onNewSale(); setIsMenuOpen(false); }} className="w-full flex items-center gap-4 px-6 py-5 text-base font-bold text-green-700 bg-green-50 rounded-2xl transition-all active:scale-[0.98]">
                                     <TrendingUp className="text-green-600" size={24} /> {newSaleLabel}
+                                  </button>
+                                )}
+                                {onEditarFunil && (
+                                  <button type="button" onClick={() => { onEditarFunil(); setIsMenuOpen(false); }} className="w-full flex items-center gap-4 px-6 py-5 text-base font-bold text-gray-700 bg-gray-50 rounded-2xl transition-all active:scale-[0.98]">
+                                    <LayoutGrid className="text-gray-500" size={24} /> Editar funil
                                   </button>
                                 )}
                               </div>
@@ -337,7 +344,7 @@ export default function Navbar({
                       transition={{ duration: 0.15 }}
                     >
                       {/* Seção: Ações de Vendas/Leads */}
-                      {(onNewLead || onNewSale) && (
+                      {(onNewLead || onNewSale || onEditarFunil) && (
                         <div className="px-4 py-2 space-y-2">
                           <div className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1 flex items-center gap-2">
                             <Plus size={10} /> Operação
@@ -350,6 +357,11 @@ export default function Navbar({
                           {onNewSale && (
                             <button onClick={() => { onNewSale(); setIsMenuOpen(false); }} className="w-full flex items-center gap-3 px-4 py-3 text-sm font-bold text-green-700 bg-green-50/50 hover:bg-green-100 rounded-xl transition-all">
                               <TrendingUp className="text-green-600" size={20} /> {newSaleLabel}
+                            </button>
+                          )}
+                          {onEditarFunil && (
+                            <button type="button" onClick={() => { onEditarFunil(); setIsMenuOpen(false); }} className="w-full flex items-center gap-3 px-4 py-3 text-sm font-bold text-gray-700 bg-gray-50 hover:bg-gray-100 rounded-xl transition-all">
+                              <LayoutGrid className="text-gray-500" size={20} /> Editar funil
                             </button>
                           )}
                         </div>
