@@ -3,7 +3,8 @@
 import { useEffect, useState, useRef, Suspense, useCallback } from "react";
 import { useSearchParams } from "next/navigation";
 import { DragDropContext, Droppable, Draggable } from "@hello-pangea/dnd";
-import api, { LeadService, TenantService, LeadData, LeadSale, MonthSale, mensagemDeErro, GoogleAgendaService, type AgendamentoNoGoogle } from "@/services/api";
+import api, { LeadService, TenantService, LeadData, LeadSale, MonthSale, mensagemDeErro, GoogleAgendaService, type AgendamentoNoGoogle, type PapelEtapa } from "@/services/api";
+import { useFunil } from "@/hooks/useFunil";
 import { useAuthStore } from "@/store/authStore";
 import { useTenant } from "@/contexts/TenantContext";
 import { useAcessosDoCRM } from "@/contexts/AcessosContext";
@@ -30,13 +31,7 @@ import { corDeInatividade, formatarAgendamento, linkDeLembrete, mensagemDeLembre
 
 type LeadFormValues = z.infer<typeof leadSchema>;
 
-const COLUMNS = [
-  { id: "NOVO", title: "Novos Leads", order: 0 },
-  { id: "ATENDIMENTO", title: "Em Atendimento", order: 1 },
-  { id: "AGENDADO", title: "Agendados", order: 2 },
-  { id: "GANHO", title: "Ganho (Conversão)", order: 3 },
-  { id: "PERDIDO", title: "Perdido", order: 4 },
-];
+type ColunaQuadro = { id: string; title: string; order: number; papel: PapelEtapa };
 
 // Helpers de Formatação
 const formatCurrency = (value: number) => {
@@ -76,7 +71,7 @@ const parseSafeDate = (dateStr: any) => {
 
 // Helper para Inatividade: a cor vem da regra única (lib/agendamento, D-AG-7),
 // contada a partir da referência (em "Agendados", o maior entre updated_at e agendado_em).
-const getInactivityStatus = (lead: any, columnId: string) => {
+const getInactivityStatus = (lead: any, columnId: string, papel?: PapelEtapa) => {
   // Cores (Classes completas para o Tailwind extrair)
   const BLUE = "bg-blue-600";
   const ORANGE = "bg-orange-500";
@@ -85,7 +80,7 @@ const getInactivityStatus = (lead: any, columnId: string) => {
   const defaultStatus = { color: BLUE, animate: false, message: "", showTooltip: false };
 
   const now = new Date();
-  const cor = corDeInatividade(lead, columnId, now);
+  const cor = corDeInatividade(lead, columnId, now, papel);
   const referencia = referenciaDeInatividade(lead, columnId);
   if (cor === "azul" || !referencia) return defaultStatus;
 
@@ -133,6 +128,18 @@ function KanbanContent() {
   // Google Agenda (spec crm-google-agenda RF-28): só com crm-google-agenda e crm-agendamento ligadas.
   const googleAgendaFlag = useFlag("crm-google-agenda");
   const googleAgendaLigada = agendamentoLigado && googleAgendaFlag;
+
+  // Colunas vêm do funil da empresa (FUN-02). Sem funil, o quadro não inventa o padrão (FUN-03).
+  const { funil, erro: erroFunil, recarregar } = useFunil();
+  const colunas: ColunaQuadro[] = (funil?.etapas ?? []).map((etapa, order) => ({
+    id: etapa.id,
+    title: etapa.nome,
+    order,
+    papel: etapa.papel,
+  }));
+  const colunasRef = useRef(colunas);
+  colunasRef.current = colunas;
+  const prevFunil = useRef<typeof funil>(null);
   const podeConectarGoogleAgenda = session?.role === "GlobalAdmin" || pode("crm.integracoes.gerir");
 
   // "Acessar CRM" na lista de tenants abre /kanban?tenant_id=<id>. Aplica uma
@@ -332,13 +339,14 @@ function KanbanContent() {
   const prevMonth = useRef<number | null>(null);
   const prevYear = useRef<number | null>(null);
 
-  const loadLeads = useCallback(async (statusListOrSilent: string[] | boolean = COLUMNS.map(c => c.id), silentParam = false) => {
+  const loadLeads = useCallback(async (statusListOrSilent: string[] | boolean = colunasRef.current.map(c => c.id), silentParam = false) => {
     if (!activeTenantId) return;
     // Leads e vendas só com ver, ou se a leitura das permissões falhou.
     if (carregandoAcessos || (!erroAcessos && !podeVer)) return;
 
-    const statusList = Array.isArray(statusListOrSilent) ? statusListOrSilent : COLUMNS.map(c => c.id);
+    const statusList = Array.isArray(statusListOrSilent) ? statusListOrSilent : colunasRef.current.map(c => c.id);
     const silent = typeof statusListOrSilent === 'boolean' ? statusListOrSilent : silentParam;
+    if (statusList.length === 0) return;
 
     if (!silent) setLoading(true);
 
@@ -390,12 +398,17 @@ function KanbanContent() {
   }, [activeTenantId, selectedYear, selectedMonth, carregandoAcessos, erroAcessos, podeVer]);
 
   useEffect(() => {
-    if (activeTenantId && !waitingForRequestedTenant && !carregandoAcessos && (podeVer || erroAcessos)) {
+    if (erroFunil) setLoading(false);
+  }, [erroFunil]);
+
+  useEffect(() => {
+    if (activeTenantId && !waitingForRequestedTenant && !carregandoAcessos && (podeVer || erroAcessos) && funil) {
       const tenantChanged = activeTenantId !== prevTenantId.current;
+      const funilMudou = funil !== prevFunil.current;
       const dateChanged = selectedMonth !== prevMonth.current || selectedYear !== prevYear.current;
 
-      if (tenantChanged) {
-        loadLeads(); // Recarrega tudo
+      if (tenantChanged || funilMudou) {
+        loadLeads(funil.etapas.map((etapa) => etapa.id));
       } else if (dateChanged) {
         loadLeads(["GANHO", "PERDIDO"], true); // Recarrega apenas colunas filtradas
       }
@@ -403,6 +416,7 @@ function KanbanContent() {
       prevTenantId.current = activeTenantId;
       prevMonth.current = selectedMonth;
       prevYear.current = selectedYear;
+      prevFunil.current = funil;
     }
 
     if (availableTenants.length > 0) {
@@ -418,7 +432,7 @@ function KanbanContent() {
         }
       }
     }
-  }, [selectedMonth, selectedYear, activeTenantId, availableTenants, loadLeads, session, setSession, waitingForRequestedTenant, carregandoAcessos, erroAcessos, podeVer]);
+  }, [selectedMonth, selectedYear, activeTenantId, availableTenants, loadLeads, session, setSession, waitingForRequestedTenant, carregandoAcessos, erroAcessos, podeVer, funil]);
 
   const handleLogout = () => {
     logout();
@@ -708,8 +722,8 @@ function KanbanContent() {
       setBoardData(newBoardData);
     }
 
-    const sourceColDef = COLUMNS.find(c => c.id === source.droppableId);
-    const destColDef = COLUMNS.find(c => c.id === destination.droppableId);
+    const sourceColDef = colunas.find(c => c.id === source.droppableId);
+    const destColDef = colunas.find(c => c.id === destination.droppableId);
 
     // 2. LÓGICA DE MODAIS (Mantém o card no destino enquanto aguarda)
     // Sair de "Agendados" com evento (menos para "Ganho") pergunta antes (RF-26; substitui o "Mover para trás?").
@@ -857,10 +871,18 @@ function KanbanContent() {
           </div>
         )}
 
+        {erroFunil ? (
+          <div role="alert" className="mx-4 md:mx-0 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-800">
+            <p>Não foi possível carregar as colunas do quadro.</p>
+            <button type="button" onClick={() => recarregar()} className="mt-3 rounded-lg bg-white px-3 py-2 text-sm font-bold text-red-800 border border-red-200">
+              Tentar de novo
+            </button>
+          </div>
+        ) : (
         <DragDropContext onDragEnd={onDragEnd}>
           <div className="flex gap-4 h-full overflow-x-auto pb-4 custom-scrollbar snap-x snap-mandatory scroll-smooth px-4 md:px-0">
-            {COLUMNS.map((col) => (
-              <div key={col.id} className="w-[85vw] md:w-72 flex flex-col bg-gray-200/50 rounded-lg p-3 max-h-full flex-shrink-0 snap-center border border-gray-200/50 md:border-transparent shadow-sm md:shadow-none">
+            {colunas.map((col) => (
+              <div key={col.id} role="region" aria-label={col.title} className="w-[85vw] md:w-72 flex flex-col bg-gray-200/50 rounded-lg p-3 max-h-full flex-shrink-0 snap-center border border-gray-200/50 md:border-transparent shadow-sm md:shadow-none">
                 <h2 className="font-bold text-gray-700 mb-4 px-1 flex justify-between items-center uppercase text-[10px] tracking-widest shrink-0">
                   {col.title} <span className="bg-gray-300 text-[10px] py-0.5 px-2 rounded-full">{boardData[col.id]?.length || 0}</span>
                 </h2>
@@ -881,7 +903,7 @@ function KanbanContent() {
                               // Tenta encontrar a data de atualização mais recente
                               const lastUpdateDate = lead.updated_at || lead.updatedAt || lead.created_at || lead.createdAt;
                               // Flag desligada: a inatividade ignora agendado_em, como antes da feature.
-                              const status = getInactivityStatus(agendamentoLigado ? lead : { ...lead, agendado_em: undefined }, col.id);
+                              const status = getInactivityStatus(agendamentoLigado ? lead : { ...lead, agendado_em: undefined }, col.id, col.papel);
                               
                               return (
                                 <div ref={provided.innerRef} {...provided.draggableProps} {...provided.dragHandleProps} className="bg-white rounded shadow-sm mb-3 hover:shadow-md group relative transition-all w-full overflow-hidden border border-gray-100">
@@ -1068,6 +1090,7 @@ function KanbanContent() {
             ))}
           </div>
         </DragDropContext>
+        )}
         </>
         )}
       </main>
@@ -1622,14 +1645,16 @@ function KanbanContent() {
               </div>
               
               <div className="grid gap-3">
-                {COLUMNS.map((col) => {
-                  if (col.id === quickMoveLead.status) return null;
-                  
+                {colunas.map((col) => {
+                  const atual = col.id === quickMoveLead.status;
                   return (
                     <button
                       key={col.id}
+                      type="button"
+                      disabled={atual}
                       onClick={() => {
-                        const sourceColDef = COLUMNS.find(c => c.id === quickMoveLead.status);
+                        if (atual) return;
+                        const sourceColDef = colunas.find(c => c.id === quickMoveLead.status);
                         const destColDef = col;
                         
                         const moveData = {
