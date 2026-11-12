@@ -128,6 +128,11 @@ function erroApi(status: number, data: Record<string, string>) {
   return { response: { status, data } };
 }
 
+async function abrirFiltros(user: { click: (el: Element) => Promise<void> }) {
+  const botao = screen.getByRole('button', { name: /^Filtros/ });
+  if (botao.getAttribute('aria-expanded') !== 'true') await user.click(botao);
+}
+
 describe('Adiar o lead (ADI-01, ADI-03, ADI-05)', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -184,6 +189,7 @@ describe('Adiar o lead (ADI-01, ADI-03, ADI-05)', () => {
     expect(Object.keys((LeadService.adiar as ReturnType<typeof vi.fn>).mock.calls[0][2])).toEqual(['vence_em']);
     await waitFor(() => expect(within(coluna).queryByText('Maria Nova')).not.toBeInTheDocument());
 
+    await abrirFiltros(user);
     const filtro = screen.getByRole('button', { name: 'Adiados (1)' });
     expect(filtro).toHaveAttribute('aria-pressed', 'false');
     await user.click(filtro);
@@ -208,6 +214,7 @@ describe('Adiar o lead (ADI-01, ADI-03, ADI-05)', () => {
     const coluna = await screen.findByRole('region', { name: 'Novos Leads' });
     await waitFor(() => expect(within(coluna).queryByText('Maria Nova')).not.toBeInTheDocument());
 
+    await abrirFiltros(user);
     await user.click(screen.getByRole('button', { name: 'Adiados (1)' }));
     await user.click(within(coluna).getByRole('button', { name: 'Editar lead' }));
     const ficha = await screen.findByRole('dialog', { name: 'Ficha do lead' });
@@ -236,6 +243,7 @@ describe('Adiar o lead (ADI-01, ADI-03, ADI-05)', () => {
       vence_em: '2026-12-12T12:00:00Z',
     }));
 
+    await abrirFiltros(user);
     await user.click(screen.getByRole('button', { name: 'Adiados (1)' }));
     await user.click(within(coluna).getByRole('button', { name: 'Adiar' }));
     dialogo = await screen.findByRole('dialog', { name: 'Adiar lead' });
@@ -351,6 +359,7 @@ describe('Adiar o lead (ADI-01, ADI-03, ADI-05)', () => {
     expect(within(coluna).getByText('Agora Visivel')).toBeInTheDocument();
     await waitFor(() => expect(within(coluna).queryByText('Futuro Escondido')).not.toBeInTheDocument());
 
+    await abrirFiltros(user);
     await user.click(screen.getByRole('button', { name: 'Adiados (1)' }));
     expect(within(coluna).getByText('Futuro Escondido')).toBeInTheDocument();
     expect(within(coluna).queryByText('Passado Visivel')).not.toBeInTheDocument();

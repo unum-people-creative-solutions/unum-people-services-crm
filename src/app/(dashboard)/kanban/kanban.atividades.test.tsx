@@ -226,12 +226,16 @@ describe('Atividades no quadro (ATV-06)', () => {
       'lead-perdido': { itens: [{ ...atividades.itens[0], id: 'perdido', vence_em: '2026-11-12T18:00:00Z', situacao: 'pendente' }] },
     };
     renderKanban();
-    expect(await screen.findByRole('button', { name: 'Hoje' })).toHaveAttribute('aria-pressed', 'false');
+    expect(await screen.findByRole('button', { name: 'Filtros' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Hoje' })).not.toBeInTheDocument();
     expect(await screen.findByText('Bruno Amanha')).toBeInTheDocument();
     expect(screen.getByText('Convertido Ganho')).toBeInTheDocument();
 
+    await user.click(screen.getByRole('button', { name: 'Filtros' }));
+    expect(screen.getByRole('button', { name: 'Hoje' })).toHaveAttribute('aria-pressed', 'false');
     await user.click(screen.getByRole('button', { name: 'Hoje' }));
 
+    expect(screen.getByRole('button', { name: 'Filtros, 1' })).toHaveAttribute('aria-pressed', 'true');
     expect(screen.getByRole('button', { name: 'Hoje' })).toHaveAttribute('aria-pressed', 'true');
     expect(screen.getByText('Maria Hoje')).toBeInTheDocument();
     expect(screen.getByText('Noite Limite')).toBeInTheDocument();
@@ -567,6 +571,7 @@ describe('Atividades no quadro (ATV-06)', () => {
     flags.interacoes = false;
     renderKanban();
     await screen.findByText('Maria Hoje');
+    expect(screen.queryByRole('button', { name: 'Filtros' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Hoje' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Agendar consulta' })).not.toBeInTheDocument();
     expect(screen.queryByRole('tab', { name: 'Atividades' })).not.toBeInTheDocument();
