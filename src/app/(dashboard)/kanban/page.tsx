@@ -691,8 +691,8 @@ function KanbanContent() {
     const destinoId = pendingMove.destinationId;
     setIsConfirmModalOpen(false);
     setPendingMove(null);
-    if (atividadesLigadas && destino && lead) {
-      await seguirParaColuna(lead, origem, destino);
+    if (atividadesLigadas && destino && lead?.id) {
+      await seguirParaColuna({ id: lead.id }, origem, destino);
       return;
     }
     await executeMove(id, destinoId);
@@ -974,8 +974,9 @@ function KanbanContent() {
       return;
     }
 
-    if (atividadesLigadas && destColDef && movedLead) {
-      await seguirParaColuna(movedLead, source.droppableId, destColDef);
+    const idDoMovido = (movedLead as { id?: string } | undefined)?.id;
+    if (atividadesLigadas && destColDef && idDoMovido) {
+      await seguirParaColuna({ id: idDoMovido }, source.droppableId, destColDef);
       return;
     }
 
@@ -2140,7 +2141,7 @@ function KanbanContent() {
           abaInicial={fichaPedido.aba}
           pedidoConsulta={fichaPedido.consulta}
           tipoInicial={fichaPedido.tipo as TipoDeAtividade | undefined}
-          acaoDoMovimento={movimento?.leadId === ficha.id ? movimento.acao : undefined}
+          acaoDoMovimento={movimento && movimento.leadId === ficha.id ? movimento.acao : undefined}
           onConcluirMovimento={async (corpo) => {
             if (!movimento || movimento.leadId !== ficha.id) return;
             const venda = corpo.tipo === "venda" ? { valor: Number(corpo.descricao), data: corpo.vence_em } : undefined;
