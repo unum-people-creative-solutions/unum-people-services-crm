@@ -9,6 +9,7 @@ import {
   mover,
   moverParaDireita,
   moverParaEsquerda,
+  definirAcao,
   paraPedido,
   podeAdicionar,
   remover,
@@ -100,7 +101,7 @@ describe('editor do funil', () => {
       'Entrada', 'Em Atendimento', 'Agendados', 'Ganho (Conversão)', 'Perdido',
     ]);
     expect(r.etapas.map((e) => e.id)).toEqual(idsDoPadrao);
-    expect(paraPedido(r)[0]).toEqual({ id: 'NOVO', nome: 'Entrada' });
+    expect(paraPedido(r)[0]).toEqual({ id: 'NOVO', nome: 'Entrada', acao: 'nenhuma' });
   });
 
   it('remover tira só a coluna removível', () => {
@@ -169,20 +170,29 @@ describe('editor do funil', () => {
     const base = adicionar(iniciar(padrao));
     const r = renomear(base, etapaNova(base).chave, 'Proposta enviada');
     expect(paraPedido(r)).toEqual([
-      { id: 'NOVO', nome: 'Novos Leads' },
-      { id: 'ATENDIMENTO', nome: 'Em Atendimento' },
-      { id: 'AGENDADO', nome: 'Agendados' },
-      { nome: 'Proposta enviada' },
-      { id: 'GANHO', nome: 'Ganho (Conversão)' },
-      { id: 'PERDIDO', nome: 'Perdido' },
+      { id: 'NOVO', nome: 'Novos Leads', acao: 'nenhuma' },
+      { id: 'ATENDIMENTO', nome: 'Em Atendimento', acao: 'nenhuma' },
+      { id: 'AGENDADO', nome: 'Agendados', acao: 'consulta', exigencia: 'opcional' },
+      { nome: 'Proposta enviada', acao: 'nenhuma' },
+      { id: 'GANHO', nome: 'Ganho (Conversão)', acao: 'venda', exigencia: 'obrigatoria' },
+      { id: 'PERDIDO', nome: 'Perdido', acao: 'nenhuma' },
     ]);
     expect(paraPedido(iniciar(padrao))).toEqual([
-      { id: 'NOVO', nome: 'Novos Leads' },
-      { id: 'ATENDIMENTO', nome: 'Em Atendimento' },
-      { id: 'AGENDADO', nome: 'Agendados' },
-      { id: 'GANHO', nome: 'Ganho (Conversão)' },
-      { id: 'PERDIDO', nome: 'Perdido' },
+      { id: 'NOVO', nome: 'Novos Leads', acao: 'nenhuma' },
+      { id: 'ATENDIMENTO', nome: 'Em Atendimento', acao: 'nenhuma' },
+      { id: 'AGENDADO', nome: 'Agendados', acao: 'consulta', exigencia: 'opcional' },
+      { id: 'GANHO', nome: 'Ganho (Conversão)', acao: 'venda', exigencia: 'obrigatoria' },
+      { id: 'PERDIDO', nome: 'Perdido', acao: 'nenhuma' },
     ]);
+  });
+
+  it('definirAcao grava a ação e nenhuma apaga a exigência', () => {
+    const r = definirAcao(definirAcao(iniciar(padrao), 'AGENDADO', 'ligar', 'obrigatoria'), 'AGENDADO', 'nenhuma');
+    expect(r.etapas.find((e) => e.id === 'AGENDADO')).toMatchObject({ acao: 'nenhuma' });
+    expect(r.etapas.find((e) => e.id === 'AGENDADO')?.exigencia).toBeUndefined();
+    expect(paraPedido(definirAcao(iniciar(padrao), 'ATENDIMENTO', 'tarefa', 'opcional'))[1]).toEqual({
+      id: 'ATENDIMENTO', nome: 'Em Atendimento', acao: 'tarefa', exigencia: 'opcional',
+    });
   });
 
   it('as operações não alteram o rascunho recebido', () => {

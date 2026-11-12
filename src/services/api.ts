@@ -480,12 +480,17 @@ export const FlagsService = {
 // Funil da empresa (spec crm-funil-e-atividades-f1, D-F1-6).
 export type PapelEtapa = 'novo' | 'ganho' | 'perdido' | 'agendado' | 'comum';
 
+export type AcaoDaColuna = 'nenhuma' | 'consulta' | 'ligar' | 'whatsapp' | 'email' | 'reuniao' | 'tarefa' | 'retomar' | 'venda';
+export type ExigenciaDaAcao = 'opcional' | 'obrigatoria';
+
 export interface EtapaFunil {
   id: string;
   nome: string;
   papel: PapelEtapa;
   removivel: boolean;
   movivel: boolean;
+  acao?: AcaoDaColuna;
+  exigencia?: ExigenciaDaAcao;
 }
 
 export interface Funil {
@@ -502,14 +507,19 @@ export const FunilService = {
   },
   salvar: async (
     versao: number,
-    etapas: { id?: string; nome: string }[],
+    etapas: { id?: string; nome: string; acao?: string; exigencia?: string }[],
     tenantId?: string,
   ): Promise<Funil> => {
     let url = '/crm/funil';
     if (tenantId) url += `?tenant_id=${encodeURIComponent(tenantId)}`;
     const response = await api.put(url, {
       versao,
-      etapas: etapas.map((etapa) => (etapa.id ? { id: etapa.id, nome: etapa.nome } : { nome: etapa.nome })),
+      etapas: etapas.map((etapa) => ({
+        ...(etapa.id ? { id: etapa.id } : {}),
+        nome: etapa.nome,
+        acao: etapa.acao ?? 'nenhuma',
+        ...(etapa.acao && etapa.acao !== 'nenhuma' ? { exigencia: etapa.exigencia } : {}),
+      })),
     });
     return response.data;
   },

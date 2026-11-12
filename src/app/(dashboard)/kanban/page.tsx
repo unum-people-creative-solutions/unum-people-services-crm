@@ -3,10 +3,10 @@
 import { Fragment, useEffect, useState, useRef, Suspense, useCallback } from "react";
 import { useSearchParams } from "next/navigation";
 import { DragDropContext, Droppable, Draggable } from "@hello-pangea/dnd";
-import api, { AtividadeService, FunilService, LeadService, TenantService, LeadData, LeadSale, MonthSale, mensagemDeErro, GoogleAgendaService, type AgendamentoNoGoogle, type Atividade, type PapelEtapa } from "@/services/api";
+import api, { AtividadeService, FunilService, LeadService, TenantService, LeadData, LeadSale, MonthSale, mensagemDeErro, GoogleAgendaService, type AgendamentoNoGoogle, type Atividade, type AcaoDaColuna, type ExigenciaDaAcao, type PapelEtapa } from "@/services/api";
 import { useFunil } from "@/hooks/useFunil";
-import { adicionar, iniciar, mover, moverParaDireita, moverParaEsquerda, paraPedido, podeAdicionar, remover, renomear, type Rascunho } from "@/lib/editorDoFunil";
-import { BarraDoEditor, BotaoAdicionar, BotaoRemover, ColunaArrastavel, FaixaDoFunil, mensagemDeErroDoFunil, NomeDaColuna, SetasDaColuna } from "./_components/EditorDoFunil";
+import { adicionar, definirAcao, iniciar, mover, moverParaDireita, moverParaEsquerda, paraPedido, podeAdicionar, remover, renomear, type Rascunho } from "@/lib/editorDoFunil";
+import { BarraDoEditor, BotaoAdicionar, BotaoRemover, ColunaArrastavel, FaixaDoFunil, mensagemDeErroDoFunil, NomeDaColuna, SeletorDaAcao, SetasDaColuna } from "./_components/EditorDoFunil";
 import { FichaDoLead } from "./_components/FichaDoLead";
 import { AdiarLead, type PedidoDeAdiar } from "./_components/AdiarLead";
 import { useAuthStore } from "@/store/authStore";
@@ -37,7 +37,7 @@ import { mensagemDoAdiar, retomarPendenteNoFuturo } from "@/lib/adiar";
 
 type LeadFormValues = z.infer<typeof leadSchema>;
 
-type ColunaQuadro = { id: string; title: string; order: number; papel: PapelEtapa; chave: string; removivel: boolean; movivel: boolean };
+type ColunaQuadro = { id: string; title: string; order: number; papel: PapelEtapa; chave: string; removivel: boolean; movivel: boolean; acao: AcaoDaColuna; exigencia?: ExigenciaDaAcao };
 
 // Helpers de Formatação
 const formatCurrency = (value: number) => {
@@ -163,15 +163,21 @@ function KanbanContent() {
     }
   }
 
-  const paraColuna = (etapa: { id: string; nome: string; papel: PapelEtapa; removivel: boolean; movivel: boolean; chave?: string }, order: number): ColunaQuadro => ({
-    id: etapa.id,
-    title: etapa.nome,
-    order,
-    papel: etapa.papel,
-    chave: etapa.chave || etapa.id,
-    removivel: etapa.removivel,
-    movivel: etapa.movivel,
-  });
+  const paraColuna = (etapa: { id: string; nome: string; papel: PapelEtapa; removivel: boolean; movivel: boolean; chave?: string; acao?: AcaoDaColuna; exigencia?: ExigenciaDaAcao }, order: number): ColunaQuadro => {
+    const acao = etapa.acao ?? (etapa.id === 'AGENDADO' ? 'consulta' : etapa.id === 'GANHO' ? 'venda' : 'nenhuma');
+    const exigencia = acao === 'nenhuma' ? undefined : (etapa.exigencia ?? (etapa.id === 'GANHO' ? 'obrigatoria' : 'opcional'));
+    return {
+      id: etapa.id,
+      title: etapa.nome,
+      order,
+      papel: etapa.papel,
+      chave: etapa.chave || etapa.id,
+      removivel: etapa.removivel,
+      movivel: etapa.movivel,
+      acao,
+      exigencia,
+    };
+  };
   const colunasSalvas = (funil?.etapas ?? []).map((etapa, order) => paraColuna(etapa, order));
   const colunasRef = useRef(colunasSalvas);
   colunasRef.current = colunasSalvas;
@@ -1192,6 +1198,12 @@ function KanbanContent() {
                       />
                     )}
                     <NomeDaColuna nome={col.title} focar={col.chave === focoChave} onRenomear={(nome) => rascunho && setRascunho(renomear(rascunho, col.chave, nome))} />
+                    <SeletorDaAcao
+                      nome={col.title}
+                      acao={col.acao}
+                      exigencia={col.exigencia}
+                      onMudar={(acao, exigencia) => rascunho && setRascunho(definirAcao(rascunho, col.chave, acao, exigencia))}
+                    />
                     {col.removivel && (
                       <BotaoRemover quantidade={boardData[col.id]?.length || 0} onRemover={() => rascunho && setRascunho(remover(rascunho, col.chave))} />
                     )}

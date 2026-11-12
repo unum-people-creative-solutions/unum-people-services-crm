@@ -47,8 +47,8 @@ describe('FunilService (D-F1-6)', () => {
     expect(put).toHaveBeenCalledTimes(1);
     const [url, corpo] = put.mock.calls[0] as [string, { versao: number; etapas: { id?: string; nome: string }[] }];
     expect(url).toBe('/crm/funil?tenant_id=t%201');
-    expect(corpo).toEqual({ versao: 0, etapas });
-    expect(corpo.etapas[2]).toEqual({ nome: 'Proposta enviada' });
+    expect(corpo).toEqual({ versao: 0, etapas: etapas.map((etapa) => ({ ...etapa, acao: 'nenhuma' })) });
+    expect(corpo.etapas[2]).toEqual({ nome: 'Proposta enviada', acao: 'nenhuma' });
     expect(corpo.etapas[2]).not.toHaveProperty('id');
 
     expect(salvo.versao).toBe(1);
@@ -76,7 +76,7 @@ describe('FunilService (D-F1-6)', () => {
     expect(get).toHaveBeenCalledWith('/crm/funil?tenant_id=TENANT%23DEMO_REVIEW');
     expect(put).toHaveBeenCalledWith(
       '/crm/funil?tenant_id=TENANT%23DEMO_REVIEW',
-      { versao: 0, etapas: [{ id: 'NOVO', nome: 'Novos Leads' }] },
+      { versao: 0, etapas: [{ id: 'NOVO', nome: 'Novos Leads', acao: 'nenhuma' }] },
     );
     expect(String(get.mock.calls[0][0])).not.toContain('#');
     expect(String(put.mock.calls[0][0])).not.toContain('#');
