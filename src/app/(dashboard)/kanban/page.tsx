@@ -7,6 +7,7 @@ import api, { FunilService, LeadService, TenantService, LeadData, LeadSale, Mont
 import { useFunil } from "@/hooks/useFunil";
 import { adicionar, iniciar, mover, moverParaDireita, moverParaEsquerda, paraPedido, podeAdicionar, remover, renomear, type Rascunho } from "@/lib/editorDoFunil";
 import { BarraDoEditor, BotaoAdicionar, BotaoRemover, ColunaArrastavel, FaixaDoFunil, mensagemDeErroDoFunil, NomeDaColuna, SetasDaColuna } from "./_components/EditorDoFunil";
+import { FichaDoLead } from "./_components/FichaDoLead";
 import { useAuthStore } from "@/store/authStore";
 import { useTenant } from "@/contexts/TenantContext";
 import { useAcessosDoCRM } from "@/contexts/AcessosContext";
@@ -130,6 +131,8 @@ function KanbanContent() {
   // Google Agenda (spec crm-google-agenda RF-28): só com crm-google-agenda e crm-agendamento ligadas.
   const googleAgendaFlag = useFlag("crm-google-agenda");
   const googleAgendaLigada = agendamentoLigado && googleAgendaFlag;
+  // INT-13: desligada, o lápis segue no modal de hoje. INT-12: ligada, abre a gaveta.
+  const interacoesLigadas = useFlag("crm-interacoes");
 
   // Colunas vêm do funil da empresa (FUN-02). Sem funil, o quadro não inventa o padrão (FUN-03).
   const { funil, erro: erroFunil, recarregar, substituir } = useFunil();
@@ -191,6 +194,12 @@ function KanbanContent() {
   // Modais
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [ficha, setFicha] = useState<any>(null);
+  const empresaDaFicha = useRef(activeTenantId);
+  if (empresaDaFicha.current !== activeTenantId) {
+    empresaDaFicha.current = activeTenantId;
+    if (ficha) setFicha(null);
+  }
   const [isSaleModalOpen, setIsSaleModalOpen] = useState(false);
   const [isConfirmModalOpen, setIsConfirmModalOpen] = useState(false);
   const [isNewSaleModalOpen, setIsNewSaleModalOpen] = useState(false);
@@ -475,6 +484,12 @@ function KanbanContent() {
   };
 
   const handleEditClick = (lead: any) => {
+    if (interacoesLigadas) {
+      setIsEditModalOpen(false);
+      setFicha(lead);
+      return;
+    }
+    setFicha(null);
     setEditingLeadId(lead.id);
     setEditingLeadSales(lead.sales || []);
     setEditingLeadStatus(lead.status);
@@ -506,6 +521,15 @@ function KanbanContent() {
     if (lead) abrirLeadRef.current(lead);
   }, [leadPedido, loading, leadPedidoTratado, boardData]);
 
+  // A flag chega depois do quadro: o ?lead= que abriu o modal passa para a gaveta.
+  useEffect(() => {
+    if (!interacoesLigadas || !isEditModalOpen || !editingLeadId) return;
+    const lead = (Object.values(boardData).flat() as any[]).find((l) => l?.id === editingLeadId);
+    if (!lead) return;
+    setIsEditModalOpen(false);
+    setFicha(lead);
+  }, [interacoesLigadas, isEditModalOpen, editingLeadId, boardData]);
+
   const handleUpdateLead = async (data: LeadFormValues) => {
     if (!editingLeadId) return;
     try {
@@ -522,6 +546,7 @@ function KanbanContent() {
       await LeadService.delete(editingLeadId, activeTenantId);
       setIsDeleteConfirmModalOpen(false);
       setIsEditModalOpen(false);
+      setFicha(null);
       setEditingLeadId(null);
       setDeleteConfirmText("");
       loadLeads(true);
@@ -1828,6 +1853,31 @@ function KanbanContent() {
           </motion.div>
         )}
       </AnimatePresence>
+
+      {ficha && (
+        <FichaDoLead
+          key={ficha.id}
+          lead={ficha}
+          tenantId={activeTenantId || ""}
+          emailDaSessao={session?.email || ""}
+          podeEditar={podeEditar}
+          podeExcluir={pode("crm.lead.excluir")}
+          onFechar={() => setFicha(null)}
+          onSalvo={() => {
+            setFicha(null);
+            loadLeads(true);
+          }}
+          onExcluir={() => {
+            setEditingLeadId(ficha.id);
+            setIsDeleteConfirmModalOpen(true);
+          }}
+          onRegistrarVenda={() => {
+            setSelectedCustomer(ficha);
+            setIsNewSaleModalOpen(true);
+            setFicha(null);
+          }}
+        />
+      )}
 
       {/* Modal de Confirmação de Exclusão */}
       <AnimatePresence>

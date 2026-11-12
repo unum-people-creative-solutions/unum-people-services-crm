@@ -22,7 +22,12 @@ vi.mock('@/store/authStore', () => ({ useAuthStore: vi.fn() }));
 vi.mock('@/contexts/TenantContext', () => ({ useTenant: vi.fn() }));
 
 const flags = vi.hoisted(() => ({ ligadas: true }));
-vi.mock('@/hooks/useFlag', () => ({ useFlag: () => flags.ligadas }));
+// Chave que este mock não conhece continua false. crm-interacoes nasce desligada:
+// o ?lead= segue abrindo o modal (INT-13 / INT-14).
+vi.mock('@/hooks/useFlag', () => ({
+  useFlag: (chave: string) =>
+    flags.ligadas && (chave === 'crm-agendamento' || chave === 'crm-google-agenda' || chave === 'crm-funil-editavel'),
+}));
 vi.mock('@hello-pangea/dnd', () => ({
   DragDropContext: ({ children }: any) => <div>{children}</div>,
   Droppable: ({ children }: any) => children({ draggableProps: {}, innerRef: vi.fn(), droppableProps: {} }, {}),
