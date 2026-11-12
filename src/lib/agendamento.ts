@@ -1,3 +1,5 @@
+import type { PapelEtapa } from '@/services/api';
+
 // Agendamento no quadro do CRM (spec crm-agendamento-e-lembretes, RF-50;
 // TECH-DESIGN §5.7; blueprint §3 e §4). Funções puras, sem React.
 //
@@ -99,10 +101,20 @@ export function referenciaDeInatividade(lead: LeadComDatas, coluna: string): Dat
 
 export type CorDeInatividade = 'azul' | 'laranja' | 'vermelho';
 
-// Cor da faixa do cartão: >= 48h vermelho, >= 24h laranja, senão azul; só em
-// NOVO, ATENDIMENTO e AGENDADO. Parado (LeadParado em Go) ⇔ cor diferente de azul.
-export function corDeInatividade(lead: LeadComDatas, coluna: string, agora: Date): CorDeInatividade {
-  if (!COLUNAS_COM_INATIVIDADE.includes(coluna)) return 'azul';
+// Cor da faixa do cartão: >= 48h vermelho, >= 24h laranja, senão azul.
+// Sem papel, só em NOVO, ATENDIMENTO e AGENDADO. Com papel (FUN-50), conta em
+// comum, novo e agendado; ganho e perdido ficam azul.
+// Parado (LeadParado em Go) ⇔ cor diferente de azul.
+export function corDeInatividade(
+  lead: LeadComDatas,
+  coluna: string,
+  agora: Date,
+  papel?: PapelEtapa,
+): CorDeInatividade {
+  const conta = papel === undefined
+    ? COLUNAS_COM_INATIVIDADE.includes(coluna)
+    : papel !== 'ganho' && papel !== 'perdido';
+  if (!conta) return 'azul';
   const ref = referenciaDeInatividade(lead, coluna);
   if (!ref) return 'azul';
   const parado = agora.getTime() - ref.getTime();
