@@ -261,14 +261,16 @@ describe('Atividades no quadro (ATV-06)', () => {
     expect(within(coluna).getByText(/Inatividade crítica/)).toBeInTheDocument();
   });
 
-  it('Agendar consulta abre a ficha na atividade consulta; sem lembrete o POST omite o campo', async () => {
+  it('Ações registra a consulta à mão e o POST omite o lembrete vazio', async () => {
     const user = userEvent.setup();
     renderKanban();
     const coluna = await screen.findByRole('region', { name: 'Novos Leads' });
-    await user.click(within(coluna).getByRole('button', { name: 'Agendar consulta' }));
+    expect(within(coluna).queryByRole('button', { name: 'Agendar consulta' })).not.toBeInTheDocument();
+    await user.click(within(coluna).getByRole('button', { name: 'Editar lead' }));
     const dialog = await screen.findByRole('dialog', { name: 'Ficha do lead' });
+    await user.click(within(dialog).getByRole('tab', { name: 'Ações' }));
 
-    expect(within(dialog).getByRole('tab', { name: 'Atividades' })).toHaveAttribute('aria-selected', 'true');
+    expect(within(dialog).getByRole('tab', { name: 'Ações' })).toHaveAttribute('aria-selected', 'true');
     const form = within(dialog).getByRole('form', { name: 'Nova atividade' });
     expect(within(form).getByRole('combobox', { name: 'Tipo' })).toHaveValue('consulta');
     for (const nome of ['Consulta', 'Ligar', 'WhatsApp', 'E-mail', 'Reunião', 'Tarefa', 'Retomar contato']) {
@@ -277,10 +279,6 @@ describe('Atividades no quadro (ATV-06)', () => {
     for (const nome of ['Sem lembrete', 'Na hora', '15 min', '1 hora', '1 dia']) {
       expect(within(form).getByRole('option', { name: nome })).toBeInTheDocument();
     }
-
-    await user.selectOptions(within(form).getByRole('combobox', { name: 'Tipo' }), 'ligar');
-    await user.click(within(dialog).getByRole('button', { name: 'Agendar consulta' }));
-    expect(within(dialog).getByRole('combobox', { name: 'Tipo' })).toHaveValue('consulta');
 
     const nova = within(dialog).getByRole('form', { name: 'Nova atividade' });
     await user.type(within(nova).getByRole('textbox', { name: 'Descrição' }), 'Retorno marcado');
@@ -297,15 +295,16 @@ describe('Atividades no quadro (ATV-06)', () => {
     }));
     const corpo = (AtividadeService.criar as ReturnType<typeof vi.fn>).mock.calls[0][2];
     expect(corpo.lembrar_antes_min).toBeUndefined();
-    expect(await within(dialog).findByRole('article', { name: 'Consulta: Retorno marcado' })).toBeInTheDocument();
+    expect(LeadService.updateStatus).not.toHaveBeenCalled();
   });
 
   it('Na hora manda lembrar_antes_min 0; 1 hora manda 60', async () => {
     const user = userEvent.setup();
     renderKanban();
     const coluna = await screen.findByRole('region', { name: 'Novos Leads' });
-    await user.click(within(coluna).getByRole('button', { name: 'Agendar consulta' }));
+    await user.click(within(coluna).getByRole('button', { name: 'Editar lead' }));
     const dialog = await screen.findByRole('dialog', { name: 'Ficha do lead' });
+    await user.click(within(dialog).getByRole('tab', { name: 'Ações' }));
     const form = within(dialog).getByRole('form', { name: 'Nova atividade' });
     await user.selectOptions(within(form).getByRole('combobox', { name: 'Tipo' }), 'tarefa');
     await user.selectOptions(within(form).getByRole('combobox', { name: 'Lembrete' }), '0');
@@ -344,8 +343,9 @@ describe('Atividades no quadro (ATV-06)', () => {
     const user = userEvent.setup();
     renderKanban();
     const coluna = await screen.findByRole('region', { name: 'Novos Leads' });
-    await user.click(within(coluna).getByRole('button', { name: 'Agendar consulta' }));
+    await user.click(within(coluna).getByRole('button', { name: 'Editar lead' }));
     const dialog = await screen.findByRole('dialog', { name: 'Ficha do lead' });
+    await user.click(within(dialog).getByRole('tab', { name: 'Ações' }));
     const form = within(dialog).getByRole('form', { name: 'Nova atividade' });
     await user.type(within(form).getByRole('textbox', { name: 'Descrição' }), 'rascunho que fica');
     fireEvent.change(within(form).getByLabelText('Data'), { target: { value: '2026-11-12' } });
@@ -360,8 +360,9 @@ describe('Atividades no quadro (ATV-06)', () => {
     const user = userEvent.setup();
     renderKanban();
     const coluna = await screen.findByRole('region', { name: 'Novos Leads' });
-    await user.click(within(coluna).getByRole('button', { name: 'Agendar consulta' }));
+    await user.click(within(coluna).getByRole('button', { name: 'Editar lead' }));
     const dialog = await screen.findByRole('dialog', { name: 'Ficha do lead' });
+    await user.click(within(dialog).getByRole('tab', { name: 'Ações' }));
     const form = within(dialog).getByRole('form', { name: 'Nova atividade' });
     await user.type(within(form).getByRole('textbox', { name: 'Descrição' }), 'rascunho que fica');
     fireEvent.change(within(form).getByLabelText('Data'), { target: { value: '2026-11-12' } });
@@ -376,8 +377,9 @@ describe('Atividades no quadro (ATV-06)', () => {
     const user = userEvent.setup();
     renderKanban();
     const coluna = await screen.findByRole('region', { name: 'Novos Leads' });
-    await user.click(within(coluna).getByRole('button', { name: 'Agendar consulta' }));
+    await user.click(within(coluna).getByRole('button', { name: 'Editar lead' }));
     const dialog = await screen.findByRole('dialog', { name: 'Ficha do lead' });
+    await user.click(within(dialog).getByRole('tab', { name: 'Atividades' }));
     const consulta = await within(dialog).findByRole('article', { name: 'Consulta: Retorno da avaliação' });
     expect(consulta).toHaveTextContent('qui 12/11 às 13:00');
     expect(consulta).toHaveTextContent('Pendente');
@@ -438,6 +440,28 @@ describe('Atividades no quadro (ATV-06)', () => {
     await user.click(screen.getByRole('button', { name: 'Agendados' }));
     expect(screen.queryByRole('dialog', { name: 'Agendar horário' })).not.toBeInTheDocument();
     await waitFor(() => expect(LeadService.updateStatus).toHaveBeenCalledTimes(2));
+  });
+
+  it('coluna sem ação só muda o cartão e não abre a ficha', async () => {
+    renderKanban();
+    await screen.findByText('Maria Hoje');
+    await arrastar('NOVO', 'ATENDIMENTO');
+    await waitFor(() => expect(LeadService.updateStatus).toHaveBeenCalledWith('lead-hoje', 'ATENDIMENTO', 0, undefined, 'tenant-1'));
+    expect(screen.queryByRole('dialog', { name: 'Ficha do lead' })).not.toBeInTheDocument();
+  });
+
+  it('Ganho obrigatório abre Vendas e fechar devolve o cartão sem gravar', async () => {
+    const user = userEvent.setup();
+    renderKanban();
+    await screen.findByText('Maria Hoje');
+    await arrastar('NOVO', 'GANHO');
+    const dialog = await screen.findByRole('dialog', { name: 'Ficha do lead' });
+    expect(within(dialog).getByRole('tab', { name: 'Vendas' })).toHaveAttribute('aria-selected', 'true');
+    expect(LeadService.updateStatus).not.toHaveBeenCalled();
+    await user.click(within(dialog).getByRole('button', { name: 'Fechar' }));
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Ficha do lead' })).not.toBeInTheDocument());
+    expect(LeadService.updateStatus).not.toHaveBeenCalled();
+    expect(await screen.findByRole('region', { name: 'Novos Leads' })).toHaveTextContent('Maria Hoje');
   });
 
   it('com a flag desligada, o quadro e o modal de agendamento de hoje permanecem', async () => {

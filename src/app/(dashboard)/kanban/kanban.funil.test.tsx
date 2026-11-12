@@ -391,13 +391,13 @@ describe('Modo de edição (T25, T26, T27)', () => {
 
     await waitFor(() => expect(FunilService.salvar).toHaveBeenCalledTimes(1));
     expect(FunilService.salvar).toHaveBeenCalledWith(1, [
-      { id: 'NOVO', nome: 'Novos Leads' },
-      { id: 'ATENDIMENTO', nome: 'Conversando' },
-      { id: 'E7K2M9QXA4B', nome: 'Proposta enviada' },
-      { id: 'AGENDADO', nome: 'Agendados' },
-      { nome: 'Nova etapa' },
-      { id: 'GANHO', nome: 'Ganho (Conversão)' },
-      { id: 'PERDIDO', nome: 'Perdido' },
+      { id: 'NOVO', nome: 'Novos Leads', acao: 'nenhuma' },
+      { id: 'ATENDIMENTO', nome: 'Conversando', acao: 'nenhuma' },
+      { id: 'E7K2M9QXA4B', nome: 'Proposta enviada', acao: 'nenhuma' },
+      { id: 'AGENDADO', nome: 'Agendados', acao: 'consulta', exigencia: 'opcional' },
+      { nome: 'Nova etapa', acao: 'nenhuma' },
+      { id: 'GANHO', nome: 'Ganho (Conversão)', acao: 'venda', exigencia: 'obrigatoria' },
+      { id: 'PERDIDO', nome: 'Perdido', acao: 'nenhuma' },
     ], 'tenant-1');
     expect(screen.queryByRole('button', { name: 'Salvar' })).not.toBeInTheDocument();
     expect(screen.queryByRole('textbox', { name: /Nome da coluna/ })).not.toBeInTheDocument();

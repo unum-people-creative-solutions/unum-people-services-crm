@@ -1,4 +1,4 @@
-import type { EtapaFunil, Funil } from '@/services/api';
+import type { AcaoDaColuna, EtapaFunil, ExigenciaDaAcao, Funil } from '@/services/api';
 
 // Rascunho do editor do funil (spec crm-funil-e-atividades-f1, FUN-12 a FUN-14).
 // Funções puras, sem React. Quem decide na gravação é o servidor.
@@ -12,10 +12,19 @@ export type Rascunho = {
 
 type EtapaDoRascunho = Rascunho['etapas'][number];
 
+export function acaoInicial(etapa: EtapaFunil): { acao: AcaoDaColuna; exigencia?: ExigenciaDaAcao } {
+  if (etapa.acao) {
+    return etapa.acao === 'nenhuma' ? { acao: 'nenhuma' } : { acao: etapa.acao, exigencia: etapa.exigencia };
+  }
+  if (etapa.id === 'AGENDADO') return { acao: 'consulta', exigencia: 'opcional' };
+  if (etapa.id === 'GANHO') return { acao: 'venda', exigencia: 'obrigatoria' };
+  return { acao: 'nenhuma' };
+}
+
 export function iniciar(funil: Funil): Rascunho {
   return {
     versao: funil.versao,
-    etapas: funil.etapas.map((etapa) => ({ ...etapa, chave: etapa.id })),
+    etapas: funil.etapas.map((etapa) => ({ ...etapa, ...acaoInicial(etapa), chave: etapa.id })),
   };
 }
 
@@ -49,6 +58,7 @@ export function adicionar(r: Rascunho): Rascunho {
     id: '',
     nome: nomeDaNova(r.etapas.map((etapa) => etapa.nome)),
     papel: 'comum',
+    acao: 'nenhuma',
     removivel: true,
     movivel: true,
     nova: true,
@@ -113,6 +123,21 @@ export function moverParaDireita(r: Rascunho, chave: string): Rascunho {
   return trocar(r, indice, indice + 1);
 }
 
-export function paraPedido(r: Rascunho): { id?: string; nome: string }[] {
-  return r.etapas.map((etapa) => (etapa.nova ? { nome: etapa.nome } : { id: etapa.id, nome: etapa.nome }));
+export function definirAcao(r: Rascunho, chave: string, acao: AcaoDaColuna, exigencia: ExigenciaDaAcao = 'opcional'): Rascunho {
+  const indice = r.etapas.findIndex((etapa) => etapa.chave === chave);
+  if (indice < 0) return r;
+  const etapas = r.etapas.slice();
+  etapas[indice] = acao === 'nenhuma'
+    ? { ...etapas[indice], acao, exigencia: undefined }
+    : { ...etapas[indice], acao, exigencia };
+  return { versao: r.versao, etapas };
+}
+
+export function paraPedido(r: Rascunho): { id?: string; nome: string; acao: AcaoDaColuna; exigencia?: ExigenciaDaAcao }[] {
+  return r.etapas.map((etapa) => ({
+    ...(etapa.nova ? {} : { id: etapa.id }),
+    nome: etapa.nome,
+    acao: etapa.acao ?? 'nenhuma',
+    ...(etapa.acao && etapa.acao !== 'nenhuma' ? { exigencia: etapa.exigencia } : {}),
+  }));
 }
