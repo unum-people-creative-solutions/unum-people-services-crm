@@ -7,6 +7,7 @@ import api, { AtividadeService, FunilService, LeadService, TenantService, LeadDa
 import { useFunil } from "@/hooks/useFunil";
 import { adicionar, definirAcao, iniciar, mover, moverParaDireita, moverParaEsquerda, paraPedido, podeAdicionar, remover, renomear, type Rascunho } from "@/lib/editorDoFunil";
 import { BarraDoEditor, BotaoAdicionar, BotaoRemover, ColunaArrastavel, FaixaDoFunil, mensagemDeErroDoFunil, NomeDaColuna, SeletorDaAcao, SetasDaColuna } from "./_components/EditorDoFunil";
+import { FiltroDoQuadro } from "./_components/FiltroDoQuadro";
 import { FichaDoLead } from "./_components/FichaDoLead";
 import { AdiarLead, type PedidoDeAdiar } from "./_components/AdiarLead";
 import { useAuthStore } from "@/store/authStore";
@@ -1039,11 +1040,14 @@ function KanbanContent() {
   const leadsDaColuna = (col: ColunaQuadro) => {
     const todos = boardData[col.id] || [];
     if (editando) return todos;
-    if (adiarLigado && soAdiados) return todos.filter((lead: { id: string }) => leadEstaAdiado(lead));
-    const visiveis = adiarLigado ? todos.filter((lead: { id: string }) => !leadEstaAdiado(lead)) : todos;
-    if (!atividadesLigadas || !soHoje) return visiveis;
+    const base = adiarLigado && soAdiados
+      ? todos.filter((lead: { id: string }) => leadEstaAdiado(lead))
+      : adiarLigado
+        ? todos.filter((lead: { id: string }) => !leadEstaAdiado(lead))
+        : todos;
+    if (!atividadesLigadas || !soHoje) return base;
     if (col.papel === "ganho" || col.papel === "perdido") return [];
-    return visiveis.filter((lead: any) => temPendenteHoje(atividadesPorLead[lead.id], agoraQuadro));
+    return base.filter((lead: any) => temPendenteHoje(atividadesPorLead[lead.id], agoraQuadro));
   };
 
   return (
@@ -1054,6 +1058,13 @@ function KanbanContent() {
         onNewSale={podeEditar ? () => setIsNewSaleModalOpen(true) : undefined}
         onEditarFunil={podeEditarFunil && funil && !erroFunil && !editando ? entrarNaEdicao : undefined}
       >
+        <FiltroDoQuadro
+          hoje={atividadesLigadas ? soHoje : null}
+          adiados={adiarLigado ? soAdiados : null}
+          quantidadeAdiados={quantidadeAdiados}
+          onHoje={() => setSoHoje((atual) => !atual)}
+          onAdiados={() => setSoAdiados((atual) => !atual)}
+        />
         <div className="hidden md:flex items-center gap-3">
 
           <div className="flex items-center bg-gray-100 rounded-lg p-1">
@@ -1198,28 +1209,6 @@ function KanbanContent() {
           </div>
         ) : (
         <>
-        {atividadesLigadas && (
-          <div className="mb-4 mx-4 md:mx-0 flex flex-wrap gap-2">
-            <button
-              type="button"
-              aria-pressed={soHoje}
-              onClick={() => setSoHoje((atual) => !atual)}
-              className={`rounded-lg border px-4 py-2 text-sm font-bold ${soHoje ? "border-brand-blue bg-brand-blue text-white" : "border-gray-200 bg-white text-gray-800"}`}
-            >
-              Hoje
-            </button>
-            {adiarLigado && (
-              <button
-                type="button"
-                aria-pressed={soAdiados}
-                onClick={() => setSoAdiados((atual) => !atual)}
-                className={`rounded-lg border px-4 py-2 text-sm font-bold ${soAdiados ? "border-brand-blue bg-brand-blue text-white" : "border-gray-200 bg-white text-gray-800"}`}
-              >
-                {`Adiados (${quantidadeAdiados})`}
-              </button>
-            )}
-          </div>
-        )}
         <DragDropContext onDragEnd={onDragEnd}>
           <FaixaDoFunil editando={editando}>
             {colunas.map((col, indice) => (

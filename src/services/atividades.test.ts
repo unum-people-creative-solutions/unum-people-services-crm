@@ -84,6 +84,19 @@ describe('AtividadeService (ATV-06)', () => {
     });
     expect(Object.keys(mockPost.mock.calls[0][1]).sort()).toEqual(['descricao', 'tipo', 'vence_em']);
 
+    await AtividadeService.criar('l1', 't1', {
+      tipo: 'tarefa',
+      descricao: 'oi',
+      vence_em: '2026-11-12T18:00:00Z',
+      google_agenda: true,
+    });
+    expect(mockPost).toHaveBeenNthCalledWith(2, '/leads/l1/atividades?tenant_id=t1', {
+      tipo: 'tarefa',
+      descricao: 'oi',
+      vence_em: '2026-11-12T18:00:00Z',
+      google_agenda: true,
+    });
+
     await AtividadeService.criar('l 1', 't 1', {
       tipo: 'consulta',
       descricao: 'retorno',
@@ -125,5 +138,12 @@ describe('AtividadeService (ATV-06)', () => {
     await expect(AtividadeService.criar('l1', 't1', { tipo: 'tarefa', descricao: '', vence_em: '2026-11-12T18:00:00Z' })).rejects.toBe(erro);
     await expect(AtividadeService.concluir('l1', 'a1', 't1')).rejects.toBe(erro);
     await expect(AtividadeService.cancelar('l1', 'a1', 't1')).rejects.toBe(erro);
+  });
+
+  it('POST sincronizar usa a rota da atividade', async () => {
+    const sincronizada = { ...fixture.itens[0], google_situacao: 'ok' as const, google_evento_link: 'https://www.google.com/calendar/event?eid=abc' };
+    mockPost.mockResolvedValue({ data: sincronizada, status: 200 });
+    await expect(AtividadeService.sincronizar('l1', 'a1', 't1')).resolves.toEqual(sincronizada);
+    expect(mockPost).toHaveBeenCalledWith('/leads/l1/atividades/a1/sincronizar?tenant_id=t1');
   });
 });
