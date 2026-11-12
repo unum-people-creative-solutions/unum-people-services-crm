@@ -1,10 +1,12 @@
 "use client";
 
-import { useEffect, useState, useRef, Suspense, useCallback } from "react";
+import { useEffect, useState, useRef, Suspense, useCallback, Fragment } from "react";
 import { useSearchParams } from "next/navigation";
 import { DragDropContext, Droppable, Draggable } from "@hello-pangea/dnd";
-import api, { LeadService, TenantService, LeadData, LeadSale, MonthSale, mensagemDeErro, GoogleAgendaService, type AgendamentoNoGoogle, type PapelEtapa } from "@/services/api";
+import api, { FunilService, LeadService, TenantService, LeadData, LeadSale, MonthSale, mensagemDeErro, GoogleAgendaService, type AgendamentoNoGoogle, type PapelEtapa } from "@/services/api";
 import { useFunil } from "@/hooks/useFunil";
+import { adicionar, iniciar, paraPedido, podeAdicionar, remover, renomear, type Rascunho } from "@/lib/editorDoFunil";
+import { BarraDoEditor, BotaoAdicionar, BotaoRemover, mensagemDeErroDoFunil, NomeDaColuna } from "./_components/EditorDoFunil";
 import { useAuthStore } from "@/store/authStore";
 import { useTenant } from "@/contexts/TenantContext";
 import { useAcessosDoCRM } from "@/contexts/AcessosContext";
@@ -31,7 +33,7 @@ import { corDeInatividade, formatarAgendamento, linkDeLembrete, mensagemDeLembre
 
 type LeadFormValues = z.infer<typeof leadSchema>;
 
-type ColunaQuadro = { id: string; title: string; order: number; papel: PapelEtapa };
+type ColunaQuadro = { id: string; title: string; order: number; papel: PapelEtapa; chave: string; removivel: boolean; movivel: boolean };
 
 // Helpers de Formatação
 const formatCurrency = (value: number) => {
@@ -130,15 +132,37 @@ function KanbanContent() {
   const googleAgendaLigada = agendamentoLigado && googleAgendaFlag;
 
   // Colunas vêm do funil da empresa (FUN-02). Sem funil, o quadro não inventa o padrão (FUN-03).
-  const { funil, erro: erroFunil, recarregar } = useFunil();
-  const colunas: ColunaQuadro[] = (funil?.etapas ?? []).map((etapa, order) => ({
+  const { funil, erro: erroFunil, recarregar, substituir } = useFunil();
+  const podeEditarFunil = useFlag("crm-funil-editavel") && pode("crm.funil.editar");
+  const [editando, setEditando] = useState(false);
+  const [rascunho, setRascunho] = useState<Rascunho | null>(null);
+  const [erroEditor, setErroEditor] = useState<{ texto: string; recarregar: boolean } | null>(null);
+  const [salvandoFunil, setSalvandoFunil] = useState(false);
+  const [focoChave, setFocoChave] = useState<string | null>(null);
+  const empresaDoEditor = useRef(activeTenantId);
+  if (empresaDoEditor.current !== activeTenantId) {
+    empresaDoEditor.current = activeTenantId;
+    if (editando) {
+      setEditando(false);
+      setRascunho(null);
+      setErroEditor(null);
+      setFocoChave(null);
+    }
+  }
+
+  const paraColuna = (etapa: { id: string; nome: string; papel: PapelEtapa; removivel: boolean; movivel: boolean; chave?: string }, order: number): ColunaQuadro => ({
     id: etapa.id,
     title: etapa.nome,
     order,
     papel: etapa.papel,
-  }));
-  const colunasRef = useRef(colunas);
-  colunasRef.current = colunas;
+    chave: etapa.chave || etapa.id,
+    removivel: etapa.removivel,
+    movivel: etapa.movivel,
+  });
+  const colunasSalvas = (funil?.etapas ?? []).map((etapa, order) => paraColuna(etapa, order));
+  const colunasRef = useRef(colunasSalvas);
+  colunasRef.current = colunasSalvas;
+  const colunas = (editando && rascunho ? rascunho.etapas : (funil?.etapas ?? [])).map((etapa, order) => paraColuna(etapa, order));
   const prevFunil = useRef<typeof funil>(null);
   const podeConectarGoogleAgenda = session?.role === "GlobalAdmin" || pode("crm.integracoes.gerir");
 
@@ -697,7 +721,52 @@ function KanbanContent() {
     if (modo === "mover") loadLeads(true);
   };
 
+  const entrarNaEdicao = () => {
+    if (!funil) return;
+    setRascunho(iniciar(funil));
+    setErroEditor(null);
+    setFocoChave(null);
+    setEditando(true);
+  };
+  const cancelarEdicao = () => {
+    setEditando(false);
+    setRascunho(null);
+    setErroEditor(null);
+    setFocoChave(null);
+  };
+  const adicionarColuna = () => {
+    if (!rascunho) return;
+    const proximo = adicionar(rascunho);
+    const nova = proximo.etapas.find((etapa) => !rascunho.etapas.some((atual) => atual.chave === etapa.chave));
+    setFocoChave(nova?.chave ?? null);
+    setRascunho(proximo);
+  };
+  const salvarFunil = async () => {
+    if (!rascunho || !activeTenantId || salvandoFunil) return;
+    setSalvandoFunil(true);
+    setErroEditor(null);
+    try {
+      const salvo = await FunilService.salvar(rascunho.versao, paraPedido(rascunho), activeTenantId);
+      substituir(salvo);
+      setEditando(false);
+      setRascunho(null);
+      setErroEditor(null);
+      setFocoChave(null);
+    } catch (err) {
+      console.error(err);
+      const nomesPorId = new Map((funil?.etapas ?? []).map((etapa) => [etapa.id, etapa.nome]));
+      setErroEditor(mensagemDeErroDoFunil(err, nomesPorId));
+    } finally {
+      setSalvandoFunil(false);
+    }
+  };
+  const recarregarConflito = () => {
+    recarregar();
+    cancelarEdicao();
+  };
+
   const onDragEnd = async (result: any) => {
+    if (editando) return;
     if (!podeEditar) return;
     const { source, destination, draggableId } = result;
     
@@ -871,6 +940,21 @@ function KanbanContent() {
           </div>
         )}
 
+        {podeEditarFunil && funil && !erroFunil && (
+          editando ? (
+            <BarraDoEditor
+              erro={erroEditor}
+              salvando={salvandoFunil}
+              onSalvar={salvarFunil}
+              onCancelar={cancelarEdicao}
+              onRecarregar={recarregarConflito}
+            />
+          ) : (
+            <button type="button" onClick={entrarNaEdicao} className="mb-4 mx-4 md:mx-0 rounded-lg bg-white px-4 py-2 text-sm font-bold text-gray-800 border border-gray-200">
+              Editar funil
+            </button>
+          )
+        )}
         {erroFunil ? (
           <div role="alert" className="mx-4 md:mx-0 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-800">
             <p>Não foi possível carregar as colunas do quadro.</p>
@@ -881,11 +965,21 @@ function KanbanContent() {
         ) : (
         <DragDropContext onDragEnd={onDragEnd}>
           <div className="flex gap-4 h-full overflow-x-auto pb-4 custom-scrollbar snap-x snap-mandatory scroll-smooth px-4 md:px-0">
-            {colunas.map((col) => (
-              <div key={col.id} role="region" aria-label={col.title} className="w-[85vw] md:w-72 flex flex-col bg-gray-200/50 rounded-lg p-3 max-h-full flex-shrink-0 snap-center border border-gray-200/50 md:border-transparent shadow-sm md:shadow-none">
+            {colunas.map((col, indice) => (
+              <Fragment key={col.chave}>
+              <div role="region" aria-label={col.title} className="w-[85vw] md:w-72 flex flex-col bg-gray-200/50 rounded-lg p-3 max-h-full flex-shrink-0 snap-center border border-gray-200/50 md:border-transparent shadow-sm md:shadow-none">
+                {editando ? (
+                  <div className="mb-4 flex flex-col gap-2">
+                    <NomeDaColuna nome={col.title} focar={col.chave === focoChave} onRenomear={(nome) => rascunho && setRascunho(renomear(rascunho, col.chave, nome))} />
+                    {col.removivel && (
+                      <BotaoRemover quantidade={boardData[col.id]?.length || 0} onRemover={() => rascunho && setRascunho(remover(rascunho, col.chave))} />
+                    )}
+                  </div>
+                ) : (
                 <h2 className="font-bold text-gray-700 mb-4 px-1 flex justify-between items-center uppercase text-[10px] tracking-widest shrink-0">
                   {col.title} <span className="bg-gray-300 text-[10px] py-0.5 px-2 rounded-full">{boardData[col.id]?.length || 0}</span>
                 </h2>
+                )}
                 <Droppable droppableId={col.id}>
                   {(provided) => (
                     <div {...provided.droppableProps} ref={provided.innerRef} className="flex-1 overflow-y-auto custom-scrollbar pr-1">
@@ -898,7 +992,7 @@ function KanbanContent() {
                         const totalLtv = lead.sales?.reduce((sum: number, s: any) => sum + s.valor, 0) || 0;
                         
                         return (
-                          <Draggable key={lead.id} draggableId={lead.id} index={index} isDragDisabled={!podeEditar}>
+                          <Draggable key={lead.id} draggableId={lead.id} index={index} isDragDisabled={!podeEditar || editando}>
                             {(provided) => {
                               // Tenta encontrar a data de atualização mais recente
                               const lastUpdateDate = lead.updated_at || lead.updatedAt || lead.created_at || lead.createdAt;
@@ -921,7 +1015,7 @@ function KanbanContent() {
                                   </div>
 
                                   <div className="p-4 pl-5">
-                                    {!carregandoAcessos && !erroAcessos && podeVer && (
+                                    {!editando && !carregandoAcessos && !erroAcessos && podeVer && (
                                     <div className="absolute top-2 right-2 flex gap-1">
                                       <button 
                                         onClick={() => handleEditClick(lead)} 
@@ -1087,6 +1181,10 @@ function KanbanContent() {
                   )}
                 </Droppable>
               </div>
+              {editando && colunas[indice + 1]?.papel === "ganho" && (
+                <BotaoAdicionar pode={!!rascunho && podeAdicionar(rascunho)} onAdicionar={adicionarColuna} />
+              )}
+              </Fragment>
             ))}
           </div>
         </DragDropContext>
