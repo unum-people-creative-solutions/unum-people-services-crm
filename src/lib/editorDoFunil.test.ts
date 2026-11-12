@@ -45,7 +45,7 @@ describe('editor do funil', () => {
     expect(r.etapas.map((e) => [e.removivel, e.movivel])).toEqual([
       [false, false],
       [true, true],
-      [false, true],
+      [true, true],
       [false, false],
       [false, false],
     ]);
@@ -108,12 +108,15 @@ describe('editor do funil', () => {
     expect(remover(iniciar(padrao), 'ATENDIMENTO').etapas.map((e) => e.id)).toEqual([
       'NOVO', 'AGENDADO', 'GANHO', 'PERDIDO',
     ]);
+    expect(remover(iniciar(padrao), 'AGENDADO').etapas.map((e) => e.id)).toEqual([
+      'NOVO', 'ATENDIMENTO', 'GANHO', 'PERDIDO',
+    ]);
 
     const comNova = adicionar(iniciar(padrao));
     expect(rotulos(remover(comNova, etapaNova(comNova).chave))).toEqual(idsDoPadrao);
   });
 
-  it.each(['NOVO', 'AGENDADO', 'GANHO', 'PERDIDO'])('não remove %s', (id) => {
+  it.each(['NOVO', 'GANHO', 'PERDIDO'])('não remove %s', (id) => {
     const r = iniciar(padrao);
     expect(remover(r, id)).toEqual(r);
   });
