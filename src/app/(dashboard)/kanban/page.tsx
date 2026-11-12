@@ -5,8 +5,8 @@ import { useSearchParams } from "next/navigation";
 import { DragDropContext, Droppable, Draggable } from "@hello-pangea/dnd";
 import api, { FunilService, LeadService, TenantService, LeadData, LeadSale, MonthSale, mensagemDeErro, GoogleAgendaService, type AgendamentoNoGoogle, type PapelEtapa } from "@/services/api";
 import { useFunil } from "@/hooks/useFunil";
-import { adicionar, iniciar, mover, paraPedido, podeAdicionar, remover, renomear, type Rascunho } from "@/lib/editorDoFunil";
-import { BarraDoEditor, BotaoAdicionar, BotaoRemover, ColunaArrastavel, FaixaDoFunil, mensagemDeErroDoFunil, NomeDaColuna } from "./_components/EditorDoFunil";
+import { adicionar, iniciar, mover, moverParaDireita, moverParaEsquerda, paraPedido, podeAdicionar, remover, renomear, type Rascunho } from "@/lib/editorDoFunil";
+import { BarraDoEditor, BotaoAdicionar, BotaoRemover, ColunaArrastavel, FaixaDoFunil, mensagemDeErroDoFunil, NomeDaColuna, SetasDaColuna } from "./_components/EditorDoFunil";
 import { useAuthStore } from "@/store/authStore";
 import { useTenant } from "@/contexts/TenantContext";
 import { useAcessosDoCRM } from "@/contexts/AcessosContext";
@@ -975,6 +975,14 @@ function KanbanContent() {
               <div role="region" aria-label={col.title} className="w-[85vw] md:w-72 flex flex-col bg-gray-200/50 rounded-lg p-3 max-h-full flex-shrink-0 snap-center border border-gray-200/50 md:border-transparent shadow-sm md:shadow-none">
                 {editando ? (
                   <div className="mb-4 flex flex-col gap-2">
+                    {col.movivel && (
+                      <SetasDaColuna
+                        podeEsquerda={colunas[indice - 1]?.papel !== "novo"}
+                        podeDireita={colunas[indice + 1]?.papel !== "ganho"}
+                        onEsquerda={() => rascunho && setRascunho(moverParaEsquerda(rascunho, col.chave))}
+                        onDireita={() => rascunho && setRascunho(moverParaDireita(rascunho, col.chave))}
+                      />
+                    )}
                     <NomeDaColuna nome={col.title} focar={col.chave === focoChave} onRenomear={(nome) => rascunho && setRascunho(renomear(rascunho, col.chave, nome))} />
                     {col.removivel && (
                       <BotaoRemover quantidade={boardData[col.id]?.length || 0} onRemover={() => rascunho && setRascunho(remover(rascunho, col.chave))} />

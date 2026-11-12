@@ -512,3 +512,44 @@ describe('Arrastar coluna (T28)', () => {
     }
   });
 });
+
+describe('Setas no celular (T29)', () => {
+  beforeEach(() => {
+    flags.funil = true;
+    (AcessosService.get as any).mockResolvedValue(acessos(COM_EDICAO));
+    (FunilService.ler as any).mockResolvedValue(funilSalvo);
+    (FunilService.salvar as any).mockResolvedValue(funilSalvo);
+    quadro = { NOVO: [lead({ id: 'lead-novo', nome: 'Clara Nova', status: 'NOVO' })] };
+  });
+
+  function nomes() {
+    return screen.getAllByRole('region').map((regiao) => regiao.getAttribute('aria-label'));
+  }
+
+  it('setas só nas colunas móveis, travadas na borda de Novo e de Ganho, e o clique troca a vizinha', async () => {
+    const user = await abrirEdicao();
+
+    for (const nome of ['Novos Leads', 'Ganho (Conversão)', 'Perdido']) {
+      const regiao = screen.getByRole('region', { name: nome });
+      expect(within(regiao).queryByRole('button', { name: 'Mover para a esquerda' })).not.toBeInTheDocument();
+      expect(within(regiao).queryByRole('button', { name: 'Mover para a direita' })).not.toBeInTheDocument();
+    }
+
+    const atendimento = screen.getByRole('region', { name: 'Em Atendimento' });
+    expect(within(atendimento).getByRole('button', { name: 'Mover para a esquerda' })).toBeDisabled();
+    expect(within(atendimento).getByRole('button', { name: 'Mover para a direita' })).toBeEnabled();
+
+    const agendados = screen.getByRole('region', { name: 'Agendados' });
+    expect(within(agendados).getByRole('button', { name: 'Mover para a esquerda' })).toBeEnabled();
+    expect(within(agendados).getByRole('button', { name: 'Mover para a direita' })).toBeDisabled();
+
+    const proposta = screen.getByRole('region', { name: 'Proposta enviada' });
+    expect(within(proposta).getByRole('button', { name: 'Mover para a esquerda' })).toBeEnabled();
+    expect(within(proposta).getByRole('button', { name: 'Mover para a direita' })).toBeEnabled();
+
+    await user.click(within(atendimento).getByRole('button', { name: 'Mover para a direita' }));
+    expect(nomes()).toEqual(ORDEM_APOS_1_PARA_2);
+    await user.click(within(screen.getByRole('region', { name: 'Em Atendimento' })).getByRole('button', { name: 'Mover para a esquerda' }));
+    expect(nomes()).toEqual(ORDEM_INICIAL);
+  });
+});

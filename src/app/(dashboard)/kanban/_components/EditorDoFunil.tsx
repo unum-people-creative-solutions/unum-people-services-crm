@@ -140,6 +140,29 @@ export function ColunaArrastavel({
   );
 }
 
+export function SetasDaColuna({
+  podeEsquerda,
+  podeDireita,
+  onEsquerda,
+  onDireita,
+}: {
+  podeEsquerda: boolean;
+  podeDireita: boolean;
+  onEsquerda: () => void;
+  onDireita: () => void;
+}) {
+  return (
+    <div className="md:hidden flex gap-2">
+      <button type="button" aria-label="Mover para a esquerda" disabled={!podeEsquerda} onClick={onEsquerda} className="rounded-md border border-gray-300 bg-white px-2 py-1 text-sm font-bold text-gray-700 disabled:text-gray-400">
+        ←
+      </button>
+      <button type="button" aria-label="Mover para a direita" disabled={!podeDireita} onClick={onDireita} className="rounded-md border border-gray-300 bg-white px-2 py-1 text-sm font-bold text-gray-700 disabled:text-gray-400">
+        →
+      </button>
+    </div>
+  );
+}
+
 export function BotaoAdicionar({ pode, onAdicionar }: { pode: boolean; onAdicionar: () => void }) {
   return (
     <button
