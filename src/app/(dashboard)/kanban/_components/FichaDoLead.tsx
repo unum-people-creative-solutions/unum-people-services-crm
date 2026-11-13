@@ -170,7 +170,9 @@ export function FichaDoLead({
 
   const adiarFlag = useFlag("crm-adiar");
   const atividadesFlag = useFlag("crm-atividades");
-  const agendaLigada = useFlag("crm-google-agenda") && useFlag("crm-agendamento");
+  const googleAgendaFlag = useFlag("crm-google-agenda");
+  const agendamentoFlag = useFlag("crm-agendamento");
+  const agendaLigada = googleAgendaFlag && agendamentoFlag;
   const adiarLigado = adiarFlag && atividadesFlag;
   const mostrarAdiar = adiarLigado && podeEditar && papel !== "ganho" && !!onAdiar;
   const [agendaConectada, setAgendaConectada] = useState(false);
