@@ -1191,7 +1191,7 @@ function AbaAtividades({
               {agendaLigada && podeEditar && !(item.google_situacao === "ok" && item.google_evento_link) && (
                 <>
                   <p className="mt-1 text-xs font-bold text-gray-700">
-                    <button type="button" onClick={() => sincronizarItem(item)} disabled={ocupado} className="border-0 bg-transparent p-0 font-bold text-brand-blue disabled:opacity-50">Sincronizar</button>
+                    <button type="button" onClick={() => sincronizarItem(item)} disabled={ocupado} className="border-0 bg-transparent p-0 font-bold text-brand-blue disabled:opacity-50">Adicionar à agenda</button>
                   </p>
                   {!agendaConectada && (
                     <p className="mt-1 text-xs text-gray-600">
