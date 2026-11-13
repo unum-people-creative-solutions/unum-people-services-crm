@@ -210,7 +210,7 @@ function KanbanContent() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [ficha, setFicha] = useState<any>(null);
-  const [fichaPedido, setFichaPedido] = useState<{ aba: "dados" | "historico" | "acoes" | "atividades" | "vendas"; consulta: number; tipo?: string }>({ aba: "dados", consulta: 0 });
+  const [fichaPedido, setFichaPedido] = useState<{ aba: "dados" | "historico" | "atividades" | "vendas"; consulta: number; tipo?: string }>({ aba: "dados", consulta: 0 });
   const [movimento, setMovimento] = useState<null | { leadId: string; origem: string; destino: string; acao: AcaoDaColuna; removerDaAgenda?: boolean }>(null);
   const [atividadesPorLead, setAtividadesPorLead] = useState<Record<string, Atividade[]>>({});
   const [erroAtividades, setErroAtividades] = useState<string | null>(null);
@@ -753,7 +753,7 @@ function KanbanContent() {
   const abrirFichaNaAcao = (lead: { id: string }, destino: ColunaQuadro) => {
     setIsEditModalOpen(false);
     setFichaPedido((atual) => ({
-      aba: destino.acao === "venda" ? "vendas" : "acoes",
+      aba: destino.acao === "venda" ? "vendas" : "atividades",
       consulta: atual.consulta + 1,
       tipo: destino.acao === "venda" ? undefined : destino.acao,
     }));

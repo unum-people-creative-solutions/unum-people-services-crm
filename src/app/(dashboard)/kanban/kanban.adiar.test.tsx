@@ -219,7 +219,12 @@ describe('Adiar o lead (ADI-01, ADI-03, ADI-05)', () => {
     await user.click(screen.getByRole('button', { name: 'Adiados (1)' }));
     await user.click(within(coluna).getByRole('button', { name: 'Editar lead' }));
     const ficha = await screen.findByRole('dialog', { name: 'Ficha do lead' });
-    await user.click(within(ficha).getByRole('button', { name: 'Adiar' }));
+    const adiar = within(ficha).getByRole('button', { name: 'Adiar' });
+    const excluir = within(ficha).getByRole('button', { name: 'Excluir lead' });
+    expect(adiar.compareDocumentPosition(excluir) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(adiar.querySelector('svg')).not.toBeNull();
+    expect(adiar).toHaveTextContent('');
+    await user.click(adiar);
     const dialogo = await screen.findByRole('dialog', { name: 'Adiar lead' });
     await user.type(within(dialogo).getByRole('textbox', { name: 'Motivo' }), 'cliente viaja');
     await user.click(within(dialogo).getByRole('button', { name: 'Em 1 semana' }));
