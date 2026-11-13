@@ -5,6 +5,9 @@ import {
   rotuloDaAtividade,
   temPendenteHoje,
   temPendenteNoFuturo,
+  textoDaDuracao,
+  textoDaSituacao,
+  textoDoLembrete,
 } from './atividades';
 
 // spec crm-funil-e-atividades-f3, decisões de 12/11/2026. "agora" = 12:00 em Brasília.
@@ -24,6 +27,21 @@ describe('rótulos dos tipos', () => {
       ['retomar', 'Retomar contato'],
     ]);
     expect(rotuloDaAtividade('retomar')).toBe('Retomar contato');
+  });
+});
+
+describe('textos de status, lembrete e duração', () => {
+  it('nomeia o status e o tempo', () => {
+    expect(textoDaSituacao('pendente')).toBe('Status — Pendente');
+    expect(textoDaSituacao('feita')).toBe('Status — Feita');
+    expect(textoDaSituacao('cancelada')).toBe('Status — Cancelada');
+    expect(textoDoLembrete(15)).toBe('Lembrete — 15 min antes');
+    expect(textoDoLembrete(60)).toBe('Lembrete — 1 hora antes');
+    expect(textoDoLembrete(1440)).toBe('Lembrete — 1 dia antes');
+    expect(textoDoLembrete(0)).toBe('Lembrete — na hora');
+    expect(textoDoLembrete(undefined)).toBeNull();
+    expect(textoDaDuracao(50)).toBe('Duração — 50 min');
+    expect(textoDaDuracao(undefined)).toBeNull();
   });
 });
 

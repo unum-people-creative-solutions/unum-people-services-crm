@@ -2,7 +2,12 @@
 
 import { useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { Filter } from "lucide-react";
+import { Check, Filter } from "lucide-react";
+
+function classeDoFiltro(ativo: boolean): string {
+  const base = "flex w-full items-center justify-between gap-3 rounded-md px-3 py-2 text-left text-sm font-bold";
+  return ativo ? `${base} bg-brand-blue text-white` : `${base} text-gray-800 hover:bg-gray-50`;
+}
 
 // Hoje e Adiados ficam neste botão, ao lado de Atualizar.
 // O menu abre por cima do quadro, fora do header.
@@ -60,13 +65,15 @@ export function FiltroDoQuadro({
             className="fixed z-[80] flex min-w-40 flex-col gap-1 rounded-lg border bg-white p-2 shadow-lg"
           >
             {hoje !== null && (
-              <button type="button" aria-pressed={hoje} onClick={onHoje} className="rounded-md px-3 py-2 text-left text-sm font-bold text-gray-800 hover:bg-gray-50">
+              <button type="button" aria-pressed={hoje} onClick={onHoje} className={classeDoFiltro(hoje)}>
                 Hoje
+                {hoje ? <Check size={16} aria-hidden="true" /> : null}
               </button>
             )}
             {adiados !== null && (
-              <button type="button" aria-pressed={adiados} onClick={onAdiados} className="rounded-md px-3 py-2 text-left text-sm font-bold text-gray-800 hover:bg-gray-50">
+              <button type="button" aria-pressed={adiados} onClick={onAdiados} className={classeDoFiltro(adiados)}>
                 {`Adiados (${quantidadeAdiados})`}
+                {adiados ? <Check size={16} aria-hidden="true" /> : null}
               </button>
             )}
           </div>

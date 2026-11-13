@@ -9,12 +9,14 @@ import { leadSchema } from "@/lib/validations";
 import { formatarAgendamento, paraUTC, partesEmBrasilia } from "@/lib/agendamento";
 import {
   LEMBRETES_DE_ATIVIDADE,
-  ROTULO_DA_SITUACAO,
   TIPOS_DE_ATIVIDADE,
   ordenarPorVencimento,
   rotuloDaAtividade,
-  rotuloDoLembrete,
+  textoDaDuracao,
+  textoDaSituacao,
+  textoDoLembrete,
 } from "@/lib/atividades";
+import { ModalDeConflito, conflitosNoHorario } from "@/components/ModalDeConflito";
 import { Input } from "@/components/ui/Input";
 import { PhoneInput } from "@/components/ui/PhoneInput";
 import { CPFInput } from "@/components/ui/CPFInput";
@@ -870,6 +872,12 @@ function horarioDaAtividade(iso: string): string {
   return formatarAgendamento(iso);
 }
 
+function janelaDaAtividade(item: Atividade, duracaoPadrao: number): { inicio: string; fim: string } {
+  const minutos = item.duracao_min && item.duracao_min > 0 ? item.duracao_min : duracaoPadrao;
+  const fim = new Date(Date.parse(item.vence_em) + minutos * 60 * 1000).toISOString().replace(/\.\d{3}Z$/, "Z");
+  return { inicio: item.vence_em, fim };
+}
+
 function AbaAtividades({
   id,
   rotuloId,
@@ -912,6 +920,7 @@ function AbaAtividades({
   const [erro, setErro] = useState<string | null>(null);
   const [erroRegistro, setErroRegistro] = useState<string | null>(null);
   const [registrando, setRegistrando] = useState(false);
+  const [editando, setEditando] = useState<Atividade | null>(null);
   const [tipo, setTipo] = useState<TipoDeAtividade>("consulta");
   const [descricao, setDescricao] = useState("");
   const [data, setData] = useState("");
@@ -920,6 +929,15 @@ function AbaAtividades({
   const [lembrete, setLembrete] = useState("");
   const [ocupado, setOcupado] = useState(false);
   const [sincronizarAgenda, setSincronizarAgenda] = useState(false);
+  const [conflito, setConflito] = useState<{
+    origem: "registro" | "agenda" | "edicao";
+    item?: Atividade;
+    data: string;
+    hora: string;
+    duracaoMin: number;
+    intervalos: string[];
+    exceto?: { inicio: string; fim: string };
+  } | null>(null);
   const base = useId();
 
   useEffect(() => {
@@ -933,6 +951,7 @@ function AbaAtividades({
 
   useEffect(() => {
     if (!tipoInicial || pedidoConsulta === 0) return;
+    setEditando(null);
     setTipo(tipoInicial);
     setRegistrando(true);
   }, [tipoInicial, pedidoConsulta]);
@@ -961,25 +980,44 @@ function AbaAtividades({
     };
   }, [ativa, leadId, tenantId]);
 
-  const registrar = async (evento: FormEvent) => {
-    evento.preventDefault();
+  const minutosInformados = () => {
+    const n = Number(duracao);
+    return Number.isFinite(n) && n > 0 ? n : duracaoPadrao;
+  };
+
+  const gravarRegistro = async (quando: { data: string; hora: string }, ignorarConflito: boolean) => {
     if (!podeEditar || enviando.current) return;
-    if (!data || !hora) {
+    if (!quando.data || !quando.hora) {
       setErroRegistro(MSG_ATIVIDADE_QUANDO);
       return;
     }
+    const vence = paraUTC(quando.data, quando.hora);
+    const vaiParaAgenda = agendaLigada && sincronizarAgenda;
     enviando.current = true;
     setOcupado(true);
     setErroRegistro(null);
-    const corpo = {
-      tipo,
-      descricao,
-      vence_em: paraUTC(data, hora),
-      ...(/^\d+$/.test(duracao) ? { duracao_min: Number(duracao) } : {}),
-      ...(lembrete !== "" ? { lembrar_antes_min: Number(lembrete) } : {}),
-      ...(agendaLigada && sincronizarAgenda ? { google_agenda: true } : {}),
-    };
     try {
+      if (vaiParaAgenda && !ignorarConflito) {
+        const intervalos = await conflitosNoHorario(tenantId, vence, minutosInformados());
+        if (intervalos && intervalos.length > 0) {
+          setConflito({
+            origem: "registro",
+            data: quando.data,
+            hora: quando.hora,
+            duracaoMin: minutosInformados(),
+            intervalos,
+          });
+          return;
+        }
+      }
+      const corpo = {
+        tipo,
+        descricao,
+        vence_em: vence,
+        ...(/^\d+$/.test(duracao) ? { duracao_min: Number(duracao) } : {}),
+        ...(lembrete !== "" ? { lembrar_antes_min: Number(lembrete) } : {}),
+        ...(vaiParaAgenda ? { google_agenda: true } : {}),
+      };
       if (onConcluirMovimento && acaoDoMovimento && tipo === acaoDoMovimento) {
         await onConcluirMovimento(corpo);
       } else {
@@ -994,6 +1032,94 @@ function AbaAtividades({
       setDuracao(String(duracaoPadrao));
       setLembrete("");
       setRegistrando(false);
+      setConflito(null);
+      onMudou?.();
+    } catch (err) {
+      setErroRegistro(mensagemDaAtividade(err, false));
+    } finally {
+      enviando.current = false;
+      setOcupado(false);
+    }
+  };
+
+  const registrar = (evento: FormEvent) => {
+    evento.preventDefault();
+    void gravarRegistro({ data, hora }, false);
+  };
+
+  const limparFormulario = () => {
+    setEditando(null);
+    setTipo("consulta");
+    setDescricao("");
+    setData("");
+    setHora("");
+    duracaoTocada.current = false;
+    setDuracao(String(duracaoPadrao));
+    setLembrete("");
+    setErroRegistro(null);
+  };
+
+  const fecharFormulario = () => {
+    if (ocupado) return;
+    setRegistrando(false);
+    if (editando) limparFormulario();
+  };
+
+  const comecarEdicao = (item: Atividade) => {
+    const partes = partesEmBrasilia(item.vence_em);
+    setEditando(item);
+    setTipo(item.tipo);
+    setDescricao(item.descricao);
+    setData(partes.data);
+    setHora(partes.hora);
+    duracaoTocada.current = true;
+    setDuracao(String(item.duracao_min && item.duracao_min > 0 ? item.duracao_min : duracaoPadrao));
+    setLembrete(item.lembrar_antes_min !== undefined ? String(item.lembrar_antes_min) : "");
+    setErroRegistro(null);
+    setRegistrando(true);
+  };
+
+  const gravarEdicao = async (item: Atividade, quando: { data: string; hora: string }, ignorarConflito: boolean) => {
+    if (!podeEditar || enviando.current) return;
+    if (!quando.data || !quando.hora) {
+      setErroRegistro(MSG_ATIVIDADE_QUANDO);
+      return;
+    }
+    const vence = paraUTC(quando.data, quando.hora);
+    const naAgenda = item.google_situacao === "ok" && !!item.google_evento_link;
+    enviando.current = true;
+    setOcupado(true);
+    setErroRegistro(null);
+    try {
+      if (naAgenda && !ignorarConflito) {
+        const intervalos = await conflitosNoHorario(tenantId, vence, minutosInformados(), undefined, janelaDaAtividade(item, duracaoPadrao));
+        if (intervalos && intervalos.length > 0) {
+          setConflito({
+            origem: "edicao",
+            item,
+            data: quando.data,
+            hora: quando.hora,
+            duracaoMin: minutosInformados(),
+            intervalos,
+            exceto: janelaDaAtividade(item, duracaoPadrao),
+          });
+          return;
+        }
+      }
+      const atualizada = await AtividadeService.alterar(leadId, item.id, tenantId, {
+        tipo,
+        descricao,
+        vence_em: vence,
+        ...(/^\d+$/.test(duracao) ? { duracao_min: Number(duracao) } : {}),
+        ...(lembrete !== "" ? { lembrar_antes_min: Number(lembrete) } : {}),
+      });
+      setItens((atual) => ordenarPorVencimento(atual.map((outro) => (outro.id === item.id ? atualizada : outro))));
+      if (naAgenda && (atualizada.google_situacao !== "ok" || !atualizada.google_evento_link)) {
+        setErro("A atividade foi salva, mas o evento da agenda não foi atualizado.");
+      }
+      limparFormulario();
+      setRegistrando(false);
+      setConflito(null);
       onMudou?.();
     } catch (err) {
       setErroRegistro(mensagemDaAtividade(err, false));
@@ -1022,18 +1148,32 @@ function AbaAtividades({
     }
   };
 
-  const sincronizarItem = async (item: Atividade) => {
+  const sincronizarItem = async (item: Atividade, quando?: { data: string; hora: string }, ignorarConflito = false) => {
     if (!podeEditar || enviando.current) return;
+    const partes = quando ?? partesEmBrasilia(item.vence_em);
+    const vence = paraUTC(partes.data, partes.hora);
+    const minutos = item.duracao_min && item.duracao_min > 0 ? item.duracao_min : duracaoPadrao;
     enviando.current = true;
     setOcupado(true);
     setErro(null);
     try {
-      const atualizada = await AtividadeService.sincronizar(leadId, item.id, tenantId);
+      if (!ignorarConflito) {
+        const intervalos = await conflitosNoHorario(tenantId, vence, minutos);
+        if (intervalos && intervalos.length > 0) {
+          setConflito({ origem: "agenda", item, data: partes.data, hora: partes.hora, duracaoMin: minutos, intervalos });
+          return;
+        }
+      }
+      const mesmoHorario = Date.parse(vence) === Date.parse(item.vence_em);
+      const atualizada = mesmoHorario
+        ? await AtividadeService.sincronizar(leadId, item.id, tenantId)
+        : await AtividadeService.sincronizar(leadId, item.id, tenantId, { vence_em: vence });
       geracao.current += 1;
       setItens((atual) => ordenarPorVencimento(atual.map((outro) => (outro.id === item.id ? atualizada : outro))));
       if (atualizada.google_situacao !== "ok" || !atualizada.google_evento_link) {
         setErro("Não foi possível pôr na sua agenda. Tente de novo.");
       }
+      setConflito(null);
     } catch (err) {
       const data = (err as { response?: { data?: { error?: string } } } | null)?.response?.data;
       if (data?.error === "agenda_indisponivel") onAgendaIndisponivel?.();
@@ -1048,12 +1188,12 @@ function AbaAtividades({
     <div role="tabpanel" id={id} aria-labelledby={rotuloId} hidden={!ativa} className="flex-1 overflow-y-auto px-6 py-4">
       {erro && <p role="alert" className="mb-4 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">{erro}</p>}
       {podeEditar && (
-        <button type="button" onClick={() => setRegistrando(true)} disabled={ocupado} className="mb-6 w-full rounded-md bg-brand-blue p-3 font-bold text-white disabled:cursor-not-allowed disabled:opacity-50">
+        <button type="button" onClick={() => { limparFormulario(); setRegistrando(true); }} disabled={ocupado} className="mb-6 w-full rounded-md bg-brand-blue p-3 font-bold text-white disabled:cursor-not-allowed disabled:opacity-50">
           Nova atividade
         </button>
       )}
       {registrando && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4 text-gray-900" onClick={() => { if (!ocupado) setRegistrando(false); }}>
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4 text-gray-900" onClick={fecharFormulario}>
           <div
             role="dialog"
             aria-modal="true"
@@ -1062,19 +1202,19 @@ function AbaAtividades({
             onKeyDown={(evento) => {
               if (evento.key === "Escape") {
                 evento.stopPropagation();
-                if (!ocupado) setRegistrando(false);
+                fecharFormulario();
               }
             }}
             className="max-h-[90vh] w-full max-w-md overflow-y-auto rounded-lg bg-white p-6 shadow-xl"
           >
             <div className="mb-4 flex items-center justify-between">
-              <h2 id={`${base}-titulo`} className="text-lg font-bold">Nova atividade</h2>
-              <button type="button" onClick={() => { if (!ocupado) setRegistrando(false); }} aria-label="Fechar" className="p-2 text-gray-500 hover:text-gray-800">
+              <h2 id={`${base}-titulo`} className="text-lg font-bold">{editando ? "Editar atividade" : "Nova atividade"}</h2>
+              <button type="button" onClick={fecharFormulario} aria-label="Fechar" className="p-2 text-gray-500 hover:text-gray-800">
                 <X size={20} aria-hidden="true" />
               </button>
             </div>
             {erroRegistro && <p role="alert" className="mb-4 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">{erroRegistro}</p>}
-            <form aria-label="Nova atividade" onSubmit={registrar} noValidate className="space-y-3">
+            <form aria-label={editando ? "Editar atividade" : "Nova atividade"} onSubmit={editando ? (evento) => { evento.preventDefault(); void gravarEdicao(editando, { data, hora }, false); } : registrar} noValidate className="space-y-3">
           <div>
             <label htmlFor={`${base}-tipo`} className="text-xs font-bold uppercase text-gray-500">Tipo</label>
             <select
@@ -1142,7 +1282,7 @@ function AbaAtividades({
               {LEMBRETES_DE_ATIVIDADE.map((opcao) => <option key={opcao.rotulo} value={opcao.valor}>{opcao.rotulo}</option>)}
             </select>
           </div>
-          {agendaLigada && (
+          {agendaLigada && !editando && (
             <div>
               <label className="flex items-center gap-2 text-sm font-bold text-gray-800">
                 <input
@@ -1160,12 +1300,39 @@ function AbaAtividades({
               )}
             </div>
           )}
+          {editando?.google_situacao === "ok" && editando.google_evento_link && (
+            <p className="text-xs text-gray-600">Esta atividade está na agenda. Salvar atualiza o evento.</p>
+          )}
           <button type="submit" disabled={ocupado} className="w-full rounded-md bg-brand-blue p-3 font-bold text-white disabled:cursor-not-allowed disabled:opacity-50">
-            Registrar atividade
+            {editando ? "Salvar atividade" : "Registrar atividade"}
           </button>
             </form>
           </div>
         </div>
+      )}
+      {conflito && (
+        <ModalDeConflito
+          data={conflito.data}
+          hora={conflito.hora}
+          duracaoMin={conflito.duracaoMin}
+          tenantId={tenantId}
+          intervalos={conflito.intervalos}
+          exceto={conflito.exceto}
+          onCancelar={() => setConflito(null)}
+          onSalvar={(novaData, novaHora, mesmoAssim) => {
+            const pedido = conflito;
+            setConflito(null);
+            setData(novaData);
+            setHora(novaHora);
+            if (pedido.origem === "registro") {
+              void gravarRegistro({ data: novaData, hora: novaHora }, mesmoAssim);
+            } else if (pedido.origem === "edicao" && pedido.item) {
+              void gravarEdicao(pedido.item, { data: novaData, hora: novaHora }, mesmoAssim);
+            } else if (pedido.item) {
+              void sincronizarItem(pedido.item, { data: novaData, hora: novaHora }, mesmoAssim);
+            }
+          }}
+        />
       )}
 
       {carregando && itens.length === 0 && <p>Carregando atividades…</p>}
@@ -1174,18 +1341,19 @@ function AbaAtividades({
       <div className="space-y-3">
         {itens.map((item) => {
           const rotulo = rotuloDaAtividade(item.tipo);
-          const lembreteItem = rotuloDoLembrete(item.lembrar_antes_min);
+          const lembreteItem = textoDoLembrete(item.lembrar_antes_min);
+          const duracaoItem = textoDaDuracao(item.duracao_min);
           return (
             <article key={item.id} aria-label={`${rotulo}: ${item.descricao}`} className="rounded-md border p-3">
               <p className="text-xs font-bold uppercase text-gray-500">{rotulo}</p>
               <p className="text-sm text-gray-600">{horarioDaAtividade(item.vence_em)}</p>
               <p className="mt-1 whitespace-pre-wrap text-sm">{item.descricao}</p>
-              <p className="mt-1 text-xs font-bold text-gray-500">{ROTULO_DA_SITUACAO[item.situacao] ?? item.situacao}</p>
+              <p className="mt-1 text-xs font-bold text-gray-500">{textoDaSituacao(item.situacao)}</p>
               {lembreteItem && <p className="text-xs text-gray-500">{lembreteItem}</p>}
-              {item.duracao_min !== undefined && <p className="text-xs text-gray-500">{item.duracao_min} min</p>}
+              {duracaoItem && <p className="text-xs text-gray-500">{duracaoItem}</p>}
               {item.google_situacao === "ok" && item.google_evento_link && (
                 <p className="mt-1 text-xs font-bold text-gray-700">
-                  Na agenda · <a href={item.google_evento_link} className="text-brand-blue">Abrir evento</a>
+                  Na agenda · <a href={item.google_evento_link} target="_blank" rel="noopener noreferrer" className="text-brand-blue">Abrir evento</a>
                 </p>
               )}
               {agendaLigada && podeEditar && !(item.google_situacao === "ok" && item.google_evento_link) && (
@@ -1200,10 +1368,15 @@ function AbaAtividades({
                   )}
                 </>
               )}
-              {podeEditar && item.situacao === "pendente" && (
+              {podeEditar && (
                 <div className="mt-3 flex gap-2">
-                  <button type="button" onClick={() => mudarSituacao(item, "concluir")} disabled={ocupado} className="rounded-md bg-brand-blue px-3 py-1.5 text-sm font-bold text-white disabled:opacity-50">Concluir</button>
-                  <button type="button" onClick={() => mudarSituacao(item, "cancelar")} disabled={ocupado} className="rounded-md bg-gray-100 px-3 py-1.5 text-sm font-bold disabled:opacity-50">Cancelar</button>
+                  <button type="button" onClick={() => comecarEdicao(item)} disabled={ocupado} className="rounded-md bg-gray-100 px-3 py-1.5 text-sm font-bold disabled:opacity-50">Editar</button>
+                  {item.situacao === "pendente" && (
+                    <>
+                      <button type="button" onClick={() => mudarSituacao(item, "concluir")} disabled={ocupado} className="rounded-md bg-brand-blue px-3 py-1.5 text-sm font-bold text-white disabled:opacity-50">Concluir</button>
+                      <button type="button" onClick={() => mudarSituacao(item, "cancelar")} disabled={ocupado} className="rounded-md bg-gray-100 px-3 py-1.5 text-sm font-bold disabled:opacity-50">Cancelar</button>
+                    </>
+                  )}
                 </div>
               )}
             </article>
