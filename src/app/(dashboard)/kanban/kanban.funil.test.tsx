@@ -248,7 +248,7 @@ function funilCom(n: number): Funil {
     etapas: [
       { id: 'NOVO', nome: 'Novos Leads', papel: 'novo', removivel: false, movivel: false },
       ...comuns,
-      { id: 'AGENDADO', nome: 'Agendados', papel: 'agendado', removivel: false, movivel: true },
+      { id: 'AGENDADO', nome: 'Agendados', papel: 'agendado', removivel: true, movivel: true },
       { id: 'GANHO', nome: 'Ganho (Conversão)', papel: 'ganho', removivel: false, movivel: false },
       { id: 'PERDIDO', nome: 'Perdido', papel: 'perdido', removivel: false, movivel: false },
     ],
@@ -314,7 +314,7 @@ describe('Modo de edição (T25, T26, T27)', () => {
     expect(screen.getByRole('textbox', { name: 'Nome da coluna Em Atendimento' })).toHaveValue('Em Atendimento');
     expect(screen.getByRole('textbox', { name: 'Nome da coluna Proposta enviada' })).toBeInTheDocument();
     expect(within(screen.getByRole('region', { name: 'Novos Leads' })).queryByRole('button', { name: 'Remover coluna' })).not.toBeInTheDocument();
-    expect(within(screen.getByRole('region', { name: 'Agendados' })).queryByRole('button', { name: /Remover coluna|Mova os/ })).not.toBeInTheDocument();
+    expect(within(screen.getByRole('region', { name: 'Agendados' })).getByRole('button', { name: 'Remover coluna' })).toBeInTheDocument();
     expect(within(screen.getByRole('region', { name: 'Ganho (Conversão)' })).queryByRole('button', { name: /Remover coluna|Mova os/ })).not.toBeInTheDocument();
     expect(within(screen.getByRole('region', { name: 'Perdido' })).queryByRole('button', { name: /Remover coluna|Mova os/ })).not.toBeInTheDocument();
 

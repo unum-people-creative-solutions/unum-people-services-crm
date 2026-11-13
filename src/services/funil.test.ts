@@ -12,7 +12,7 @@ const funilPadraoEsperado = {
   etapas: [
     { id: 'NOVO', nome: 'Novos Leads', papel: 'novo', removivel: false, movivel: false },
     { id: 'ATENDIMENTO', nome: 'Em Atendimento', papel: 'comum', removivel: true, movivel: true },
-    { id: 'AGENDADO', nome: 'Agendados', papel: 'agendado', removivel: false, movivel: true },
+    { id: 'AGENDADO', nome: 'Agendados', papel: 'agendado', removivel: true, movivel: true },
     { id: 'GANHO', nome: 'Ganho (Conversão)', papel: 'ganho', removivel: false, movivel: false },
     { id: 'PERDIDO', nome: 'Perdido', papel: 'perdido', removivel: false, movivel: false },
   ],

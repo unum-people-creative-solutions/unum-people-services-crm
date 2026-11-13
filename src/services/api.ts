@@ -340,6 +340,8 @@ export interface Atividade {
   situacao: SituacaoDeAtividade;
   criada_em: string;
   criada_por: string;
+  google_evento_link?: string;
+  google_situacao?: 'ok' | 'falhou' | 'removido';
 }
 
 export interface PaginaDeAtividades {
@@ -352,9 +354,10 @@ export interface NovaAtividade {
   vence_em: string;
   duracao_min?: number;
   lembrar_antes_min?: number;
+  google_agenda?: boolean;
 }
 
-function urlAtividades(leadId: string, tenantId?: string, atividadeId?: string, acao?: 'concluir' | 'cancelar') {
+function urlAtividades(leadId: string, tenantId?: string, atividadeId?: string, acao?: 'concluir' | 'cancelar' | 'sincronizar') {
   let base = `/leads/${encodeURIComponent(leadId)}/atividades`;
   if (atividadeId) base += `/${encodeURIComponent(atividadeId)}`;
   if (acao) base += `/${acao}`;
@@ -368,6 +371,7 @@ function corpoNovaAtividade(corpo: NovaAtividade): NovaAtividade {
   const data: NovaAtividade = { tipo: corpo.tipo, descricao: corpo.descricao, vence_em: corpo.vence_em };
   if (corpo.duracao_min !== undefined) data.duracao_min = corpo.duracao_min;
   if (corpo.lembrar_antes_min !== undefined) data.lembrar_antes_min = corpo.lembrar_antes_min;
+  if (corpo.google_agenda) data.google_agenda = true;
   return data;
 }
 
@@ -386,6 +390,10 @@ export const AtividadeService = {
   },
   cancelar: async (leadId: string, atividadeId: string, tenantId?: string): Promise<Atividade> => {
     const response = await api.post(urlAtividades(leadId, tenantId, atividadeId, 'cancelar'));
+    return response.data;
+  },
+  sincronizar: async (leadId: string, atividadeId: string, tenantId?: string): Promise<Atividade> => {
+    const response = await api.post(urlAtividades(leadId, tenantId, atividadeId, 'sincronizar'));
     return response.data;
   },
 };
