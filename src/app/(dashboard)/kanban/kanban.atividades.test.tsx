@@ -135,6 +135,14 @@ function erroApi(status: number, data: Record<string, string>) {
   return { response: { status, data } };
 }
 
+async function abrirNovaAtividade(user: ReturnType<typeof userEvent.setup>, dialog: HTMLElement) {
+  await user.click(within(dialog).getByRole('tab', { name: 'Atividades' }));
+  expect(within(dialog).queryByRole('tab', { name: 'Ações' })).not.toBeInTheDocument();
+  await user.click(within(dialog).getByRole('button', { name: 'Nova atividade' }));
+  const modal = await screen.findByRole('dialog', { name: 'Nova atividade' });
+  return within(modal).getByRole('form', { name: 'Nova atividade' });
+}
+
 describe('Atividades no quadro (ATV-06)', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -269,17 +277,15 @@ describe('Atividades no quadro (ATV-06)', () => {
     expect(within(coluna).getByText(/Inatividade crítica/)).toBeInTheDocument();
   });
 
-  it('Ações registra a consulta à mão e o POST omite o lembrete vazio', async () => {
+  it('Atividades registra a consulta à mão e o POST omite o lembrete vazio', async () => {
     const user = userEvent.setup();
     renderKanban();
     const coluna = await screen.findByRole('region', { name: 'Novos Leads' });
     expect(within(coluna).queryByRole('button', { name: 'Agendar consulta' })).not.toBeInTheDocument();
     await user.click(within(coluna).getByRole('button', { name: 'Editar lead' }));
     const dialog = await screen.findByRole('dialog', { name: 'Ficha do lead' });
-    await user.click(within(dialog).getByRole('tab', { name: 'Ações' }));
+    const form = await abrirNovaAtividade(user, dialog);
 
-    expect(within(dialog).getByRole('tab', { name: 'Ações' })).toHaveAttribute('aria-selected', 'true');
-    const form = within(dialog).getByRole('form', { name: 'Nova atividade' });
     expect(within(form).getByRole('combobox', { name: 'Tipo' })).toHaveValue('consulta');
     for (const nome of ['Consulta', 'Ligar', 'WhatsApp', 'E-mail', 'Reunião', 'Tarefa', 'Retomar contato']) {
       expect(within(form).getByRole('option', { name: nome })).toBeInTheDocument();
@@ -288,11 +294,11 @@ describe('Atividades no quadro (ATV-06)', () => {
       expect(within(form).getByRole('option', { name: nome })).toBeInTheDocument();
     }
 
-    const nova = within(dialog).getByRole('form', { name: 'Nova atividade' });
+    const nova = form;
+    expect(within(nova).getByLabelText('Duração (min)')).toHaveValue('50');
     await user.type(within(nova).getByRole('textbox', { name: 'Descrição' }), 'Retorno marcado');
     fireEvent.change(within(nova).getByLabelText('Data'), { target: { value: '2026-11-12' } });
     fireEvent.change(within(nova).getByLabelText('Hora'), { target: { value: '15:30' } });
-    fireEvent.change(within(nova).getByLabelText('Duração (min)'), { target: { value: '50' } });
     await user.click(within(nova).getByRole('button', { name: 'Registrar atividade' }));
 
     await waitFor(() => expect(AtividadeService.criar).toHaveBeenCalledWith('lead-hoje', 'tenant-1', {
@@ -304,6 +310,7 @@ describe('Atividades no quadro (ATV-06)', () => {
     const corpo = (AtividadeService.criar as ReturnType<typeof vi.fn>).mock.calls[0][2];
     expect(corpo.lembrar_antes_min).toBeUndefined();
     expect(LeadService.updateStatus).not.toHaveBeenCalled();
+    expect(screen.queryByRole('dialog', { name: 'Nova atividade' })).not.toBeInTheDocument();
     expect(within(dialog).getByRole('tab', { name: 'Atividades' })).toHaveAttribute('aria-selected', 'true');
   });
 
@@ -313,8 +320,7 @@ describe('Atividades no quadro (ATV-06)', () => {
     const coluna = await screen.findByRole('region', { name: 'Novos Leads' });
     await user.click(within(coluna).getByRole('button', { name: 'Editar lead' }));
     const dialog = await screen.findByRole('dialog', { name: 'Ficha do lead' });
-    await user.click(within(dialog).getByRole('tab', { name: 'Ações' }));
-    const form = within(dialog).getByRole('form', { name: 'Nova atividade' });
+    const form = await abrirNovaAtividade(user, dialog);
     await user.selectOptions(within(form).getByRole('combobox', { name: 'Tipo' }), 'tarefa');
     await user.selectOptions(within(form).getByRole('combobox', { name: 'Lembrete' }), '0');
     await user.type(within(form).getByRole('textbox', { name: 'Descrição' }), 'Ligar na hora');
@@ -326,11 +332,11 @@ describe('Atividades no quadro (ATV-06)', () => {
       tipo: 'tarefa',
       descricao: 'Ligar na hora',
       vence_em: '2026-11-12T19:00:00Z',
+      duracao_min: 50,
       lembrar_antes_min: 0,
     }));
 
-    await user.click(within(dialog).getByRole('tab', { name: 'Ações' }));
-    const deNovo = within(dialog).getByRole('form', { name: 'Nova atividade' });
+    const deNovo = await abrirNovaAtividade(user, dialog);
     await user.selectOptions(within(deNovo).getByRole('combobox', { name: 'Tipo' }), 'email');
     await user.selectOptions(within(deNovo).getByRole('combobox', { name: 'Lembrete' }), '60');
     await user.type(within(deNovo).getByRole('textbox', { name: 'Descrição' }), 'E-mail em uma hora');
@@ -342,6 +348,7 @@ describe('Atividades no quadro (ATV-06)', () => {
       tipo: 'email',
       descricao: 'E-mail em uma hora',
       vence_em: '2026-11-13T12:00:00Z',
+      duracao_min: 50,
       lembrar_antes_min: 60,
     }));
   });
@@ -355,8 +362,7 @@ describe('Atividades no quadro (ATV-06)', () => {
     const coluna = await screen.findByRole('region', { name: 'Novos Leads' });
     await user.click(within(coluna).getByRole('button', { name: 'Editar lead' }));
     const dialog = await screen.findByRole('dialog', { name: 'Ficha do lead' });
-    await user.click(within(dialog).getByRole('tab', { name: 'Ações' }));
-    const form = within(dialog).getByRole('form', { name: 'Nova atividade' });
+    const form = await abrirNovaAtividade(user, dialog);
     await user.type(within(form).getByRole('textbox', { name: 'Descrição' }), 'rascunho que fica');
     fireEvent.change(within(form).getByLabelText('Data'), { target: { value: '2026-11-12' } });
     fireEvent.change(within(form).getByLabelText('Hora'), { target: { value: '15:30' } });
@@ -372,8 +378,7 @@ describe('Atividades no quadro (ATV-06)', () => {
     const coluna = await screen.findByRole('region', { name: 'Novos Leads' });
     await user.click(within(coluna).getByRole('button', { name: 'Editar lead' }));
     const dialog = await screen.findByRole('dialog', { name: 'Ficha do lead' });
-    await user.click(within(dialog).getByRole('tab', { name: 'Ações' }));
-    const form = within(dialog).getByRole('form', { name: 'Nova atividade' });
+    const form = await abrirNovaAtividade(user, dialog);
     await user.type(within(form).getByRole('textbox', { name: 'Descrição' }), 'rascunho que fica');
     fireEvent.change(within(form).getByLabelText('Data'), { target: { value: '2026-11-12' } });
     await user.click(within(form).getByRole('button', { name: 'Registrar atividade' }));
@@ -419,6 +424,7 @@ describe('Atividades no quadro (ATV-06)', () => {
     await user.click(within(dialog).getByRole('tab', { name: 'Atividades' }));
 
     expect(await within(dialog).findByRole('article', { name: 'Consulta: Retorno da avaliação' })).toBeInTheDocument();
+    expect(within(dialog).queryByRole('button', { name: 'Nova atividade' })).not.toBeInTheDocument();
     expect(within(dialog).queryByRole('form', { name: 'Nova atividade' })).not.toBeInTheDocument();
     expect(within(dialog).queryByRole('button', { name: 'Concluir' })).not.toBeInTheDocument();
     expect(within(dialog).queryByRole('button', { name: 'Cancelar' })).not.toBeInTheDocument();
@@ -445,7 +451,7 @@ describe('Atividades no quadro (ATV-06)', () => {
     const dialog = await screen.findByRole('dialog', { name: 'Ficha do lead' });
     await user.click(within(dialog).getByRole('tab', { name: 'Atividades' }));
     const consulta = await within(dialog).findByRole('article', { name: 'Consulta: Retorno da avaliação' });
-    expect(consulta).toHaveTextContent('Na agenda');
+    expect(consulta).toHaveTextContent('Na agenda · Abrir evento');
     expect(within(consulta).getByRole('link', { name: 'Abrir evento' })).toHaveAttribute('href', 'https://www.google.com/calendar/event?eid=abc');
     expect(within(consulta).queryByRole('button', { name: 'Sincronizar' })).not.toBeInTheDocument();
   });
@@ -459,11 +465,10 @@ describe('Atividades no quadro (ATV-06)', () => {
     renderKanban();
     await user.click(await screen.findByRole('button', { name: 'Editar lead' }));
     const dialog = await screen.findByRole('dialog', { name: 'Ficha do lead' });
-    await user.click(within(dialog).getByRole('tab', { name: 'Ações' }));
-    const caixa = await within(dialog).findByRole('checkbox', { name: 'Sincronizar com o Google Calendar' });
+    const form = await abrirNovaAtividade(user, dialog);
+    const caixa = within(form).getByRole('checkbox', { name: 'Sincronizar com o Google Calendar' });
     await user.click(caixa);
     expect(caixa).not.toBeChecked();
-    const form = within(dialog).getByRole('form', { name: 'Nova atividade' });
     fireEvent.change(within(form).getByLabelText('Data'), { target: { value: '2026-11-12' } });
     fireEvent.change(within(form).getByLabelText('Hora'), { target: { value: '15:30' } });
     await user.click(within(form).getByRole('button', { name: 'Registrar atividade' }));
@@ -471,7 +476,7 @@ describe('Atividades no quadro (ATV-06)', () => {
     expect((AtividadeService.criar as ReturnType<typeof vi.fn>).mock.calls.at(-1)?.[2].google_agenda).toBeUndefined();
   });
 
-  it('409 da agenda desabilita Sincronizar e mostra o aviso de conectar', async () => {
+  it('409 da agenda avisa para conectar e Sincronizar continua disponível', async () => {
     flags.googleAgenda = true;
     (GoogleAgendaService.situacao as ReturnType<typeof vi.fn>).mockResolvedValue({
       conectada: true, situacao: 'ativa', email: 'a@b.c', agenda_id: 'primary', agenda_nome: 'Agenda', duracao_padrao_min: 50, conflito: false, lista_agendas: true,
@@ -485,8 +490,50 @@ describe('Atividades no quadro (ATV-06)', () => {
     const tarefa = await within(dialog).findByRole('article', { name: 'Tarefa: Enviar proposta' });
     await user.click(within(tarefa).getByRole('button', { name: 'Sincronizar' }));
     expect(await within(dialog).findByRole('alert')).toHaveTextContent('Conecte o Google Agenda em Configurações para sincronizar.');
-    expect(within(tarefa).getByRole('button', { name: 'Sincronizar' })).toBeDisabled();
+    expect(within(tarefa).getByRole('button', { name: 'Sincronizar' })).toBeEnabled();
     expect(within(tarefa).getByRole('link', { name: 'Configurações' })).toHaveAttribute('href', '/settings?aba=google-agenda');
+  });
+
+  it('sincronizar que volta sem evento mostra o erro e o botão continua', async () => {
+    flags.googleAgenda = true;
+    (GoogleAgendaService.situacao as ReturnType<typeof vi.fn>).mockResolvedValue({
+      conectada: true, situacao: 'ativa', email: 'a@b.c', agenda_id: 'primary', agenda_nome: 'Agenda', duracao_padrao_min: 50, conflito: false, lista_agendas: true,
+    });
+    (AtividadeService.sincronizar as ReturnType<typeof vi.fn>).mockResolvedValue({
+      id: TAREFA,
+      tipo: 'tarefa',
+      descricao: 'Enviar proposta',
+      vence_em: '2026-11-12T21:00:00Z',
+      situacao: 'pendente',
+      criada_em: '2026-11-12T15:00:00Z',
+      criada_por: 'user@test.com',
+      google_situacao: 'falhou',
+    });
+    const user = userEvent.setup();
+    renderKanban();
+    await user.click(await screen.findByRole('button', { name: 'Editar lead' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Ficha do lead' });
+    await user.click(within(dialog).getByRole('tab', { name: 'Atividades' }));
+    const tarefa = await within(dialog).findByRole('article', { name: 'Tarefa: Enviar proposta' });
+    await user.click(within(tarefa).getByRole('button', { name: 'Sincronizar' }));
+    expect(await within(dialog).findByRole('alert')).toHaveTextContent('Não foi possível pôr na sua agenda. Tente de novo.');
+    expect(within(tarefa).getByRole('button', { name: 'Sincronizar' })).toBeEnabled();
+    expect(within(tarefa).queryByRole('link', { name: 'Abrir evento' })).not.toBeInTheDocument();
+  });
+
+  it('a duração já vem com o padrão da conta em qualquer tipo', async () => {
+    flags.googleAgenda = true;
+    (GoogleAgendaService.situacao as ReturnType<typeof vi.fn>).mockResolvedValue({
+      conectada: true, situacao: 'ativa', email: 'a@b.c', agenda_id: 'primary', agenda_nome: 'Agenda', duracao_padrao_min: 40, conflito: false, lista_agendas: true,
+    });
+    const user = userEvent.setup();
+    renderKanban();
+    await user.click(await screen.findByRole('button', { name: 'Editar lead' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Ficha do lead' });
+    const form = await abrirNovaAtividade(user, dialog);
+    await waitFor(() => expect(within(form).getByLabelText('Duração (min)')).toHaveValue('40'));
+    await user.selectOptions(within(form).getByRole('combobox', { name: 'Tipo' }), 'tarefa');
+    expect(within(form).getByLabelText('Duração (min)')).toHaveValue('40');
   });
 
   it('checkbox marcado com a conta conectada; desabilitado sem conta; a lista sincroniza', async () => {
@@ -517,17 +564,17 @@ describe('Atividades no quadro (ATV-06)', () => {
     const coluna = await screen.findByRole('region', { name: 'Novos Leads' });
     await user.click(within(coluna).getByRole('button', { name: 'Editar lead' }));
     const dialog = await screen.findByRole('dialog', { name: 'Ficha do lead' });
-    await user.click(within(dialog).getByRole('tab', { name: 'Ações' }));
-    const caixa = await within(dialog).findByRole('checkbox', { name: 'Sincronizar com o Google Calendar' });
+    const form = await abrirNovaAtividade(user, dialog);
+    const caixa = within(form).getByRole('checkbox', { name: 'Sincronizar com o Google Calendar' });
     expect(caixa).toBeChecked();
     expect(caixa).toBeEnabled();
+    await user.click(within(screen.getByRole('dialog', { name: 'Nova atividade' })).getByRole('button', { name: 'Fechar' }));
 
-    await user.click(within(dialog).getByRole('tab', { name: 'Atividades' }));
     const tarefa = await within(dialog).findByRole('article', { name: 'Tarefa: Enviar proposta' });
     expect(within(tarefa).queryByRole('link', { name: 'Abrir evento' })).not.toBeInTheDocument();
     await user.click(within(tarefa).getByRole('button', { name: 'Sincronizar' }));
     await waitFor(() => expect(AtividadeService.sincronizar).toHaveBeenCalledWith('lead-hoje', TAREFA, 'tenant-1'));
-    expect(within(dialog).getByRole('article', { name: 'Tarefa: Enviar proposta' })).toHaveTextContent('Na agenda');
+    expect(within(dialog).getByRole('article', { name: 'Tarefa: Enviar proposta' })).toHaveTextContent('Na agenda · Abrir evento');
     expect(within(dialog).getByRole('link', { name: 'Abrir evento' })).toHaveAttribute('href', 'https://www.google.com/calendar/event?eid=abc');
     expect(within(dialog).queryByRole('button', { name: 'Remover evento' })).not.toBeInTheDocument();
   });
@@ -540,11 +587,11 @@ describe('Atividades no quadro (ATV-06)', () => {
     await screen.findByText('Maria Hoje');
     await user.click(screen.getByRole('button', { name: 'Editar lead' }));
     const dialog = await screen.findByRole('dialog', { name: 'Ficha do lead' });
-    await user.click(within(dialog).getByRole('tab', { name: 'Ações' }));
-    const caixa = await within(dialog).findByRole('checkbox', { name: 'Sincronizar com o Google Calendar' });
+    const form = await abrirNovaAtividade(user, dialog);
+    const caixa = within(form).getByRole('checkbox', { name: 'Sincronizar com o Google Calendar' });
     expect(caixa).toBeDisabled();
     expect(caixa).not.toBeChecked();
-    expect(within(dialog).getByRole('link', { name: 'Configurações' })).toHaveAttribute('href', '/settings?aba=google-agenda');
+    expect(within(form).getByRole('link', { name: 'Configurações' })).toHaveAttribute('href', '/settings?aba=google-agenda');
   });
 
   it('falha ao listar as atividades do quadro aparece no alerta', async () => {
