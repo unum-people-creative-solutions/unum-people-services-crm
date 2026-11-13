@@ -4,7 +4,7 @@ import { useEffect, useId, useRef, useState, type FormEvent } from "react";
 import { useForm, Controller, type Resolver } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { X, Trash2 } from "lucide-react";
+import { Clock, X, Trash2 } from "lucide-react";
 import { leadSchema } from "@/lib/validations";
 import { formatarAgendamento, paraUTC, partesEmBrasilia } from "@/lib/agendamento";
 import {
@@ -118,7 +118,7 @@ export interface FichaDoLeadProps {
   atividadesLigadas?: boolean;
   papel?: PapelEtapa;
   onAdiar?: () => void;
-  abaInicial?: "dados" | "historico" | "acoes" | "atividades" | "vendas";
+  abaInicial?: "dados" | "historico" | "atividades" | "vendas";
   pedidoConsulta?: number;
   tipoInicial?: TipoDeAtividade;
   onAtividadeMudou?: () => void;
@@ -154,19 +154,17 @@ export function FichaDoLead({
   const idTitulo = `${base}-titulo`;
   const idAbaDados = `${base}-aba-dados`;
   const idAbaHistorico = `${base}-aba-historico`;
-  const idAbaAcoes = `${base}-aba-acoes`;
   const idAbaAtividades = `${base}-aba-atividades`;
   const idAbaVendas = `${base}-aba-vendas`;
   const idPainelDados = `${base}-painel-dados`;
   const idPainelHistorico = `${base}-painel-historico`;
-  const idPainelAcoes = `${base}-painel-acoes`;
   const idPainelAtividades = `${base}-painel-atividades`;
   const idPainelVendas = `${base}-painel-vendas`;
-  const abasDaFlag = new Set(["acoes", "atividades", "vendas"]);
+  const abasDaFlag = new Set(["atividades", "vendas"]);
   const abaDePartida = atividadesLigadas && abasDaFlag.has(abaInicial)
     ? abaInicial
     : abaInicial === "historico" ? "historico" : "dados";
-  const [aba, setAba] = useState<"dados" | "historico" | "acoes" | "atividades" | "vendas">(abaDePartida);
+  const [aba, setAba] = useState<"dados" | "historico" | "atividades" | "vendas">(abaDePartida);
 
   const adiarFlag = useFlag("crm-adiar");
   const atividadesFlag = useFlag("crm-atividades");
@@ -176,6 +174,7 @@ export function FichaDoLead({
   const adiarLigado = adiarFlag && atividadesFlag;
   const mostrarAdiar = adiarLigado && podeEditar && papel !== "ganho" && !!onAdiar;
   const [agendaConectada, setAgendaConectada] = useState(false);
+  const [duracaoPadrao, setDuracaoPadrao] = useState(50);
 
   useEffect(() => {
     if (!agendaLigada) {
@@ -185,7 +184,13 @@ export function FichaDoLead({
     let vivo = true;
     GoogleAgendaService.situacao(tenantId)
       .then((situacao) => {
-        if (vivo) setAgendaConectada(situacao.conectada && situacao.situacao === "ativa");
+        if (!vivo) return;
+        if (!situacao.conectada) {
+          setAgendaConectada(false);
+          return;
+        }
+        setAgendaConectada(situacao.situacao === "ativa");
+        if (situacao.duracao_padrao_min > 0) setDuracaoPadrao(situacao.duracao_padrao_min);
       })
       .catch(() => {
         if (vivo) setAgendaConectada(false);
@@ -210,6 +215,16 @@ export function FichaDoLead({
         <div className="flex shrink-0 items-center justify-between border-b px-6 py-4">
           <h2 id={idTitulo} className="text-lg font-bold">Ficha do lead</h2>
           <div className="flex items-center gap-2">
+            {mostrarAdiar && (
+              <button
+                type="button"
+                onClick={() => onAdiar?.()}
+                className="rounded-full p-2 text-amber-600 hover:bg-amber-50"
+                aria-label="Adiar"
+              >
+                <Clock size={20} aria-hidden="true" />
+              </button>
+            )}
             {podeExcluir && (
               <button
                 type="button"
@@ -251,22 +266,11 @@ export function FichaDoLead({
           </button>
           {atividadesLigadas && (
             <>
-              <button type="button" role="tab" id={idAbaAcoes} aria-selected={aba === "acoes"} aria-controls={idPainelAcoes} onClick={() => setAba("acoes")} className={`py-3 text-sm font-bold ${aba === "acoes" ? "border-b-2 border-brand-blue text-brand-blue" : "text-gray-500"}`}>Ações</button>
               <button type="button" role="tab" id={idAbaAtividades} aria-selected={aba === "atividades"} aria-controls={idPainelAtividades} onClick={() => setAba("atividades")} className={`py-3 text-sm font-bold ${aba === "atividades" ? "border-b-2 border-brand-blue text-brand-blue" : "text-gray-500"}`}>Atividades</button>
               <button type="button" role="tab" id={idAbaVendas} aria-selected={aba === "vendas"} aria-controls={idPainelVendas} onClick={() => setAba("vendas")} className={`py-3 text-sm font-bold ${aba === "vendas" ? "border-b-2 border-brand-blue text-brand-blue" : "text-gray-500"}`}>Vendas</button>
             </>
           )}
         </div>
-
-        {mostrarAdiar ? (
-          <div className="flex shrink-0 flex-col gap-2 border-b px-6 py-3">
-            {mostrarAdiar && (
-              <button type="button" onClick={() => onAdiar?.()} className="w-full rounded-md border border-gray-200 bg-white p-3 text-sm font-bold text-gray-800">
-                Adiar
-              </button>
-            )}
-          </div>
-        ) : null}
 
         <AbaDados
           id={idPainelDados}
@@ -292,10 +296,9 @@ export function FichaDoLead({
         {atividadesLigadas && (
           <>
             <AbaAtividades
-              id={idPainelAcoes}
-              rotuloId={idAbaAcoes}
-              ativa={aba === "acoes"}
-              parte="formulario"
+              id={idPainelAtividades}
+              rotuloId={idAbaAtividades}
+              ativa={aba === "atividades"}
               leadId={lead.id}
               tenantId={tenantId}
               podeEditar={podeEditar}
@@ -304,21 +307,8 @@ export function FichaDoLead({
               acaoDoMovimento={acaoDoMovimento}
               agendaLigada={agendaLigada}
               agendaConectada={agendaConectada}
+              duracaoPadrao={duracaoPadrao}
               onConcluirMovimento={onConcluirMovimento}
-              onMudou={onAtividadeMudou}
-              onRegistrada={() => setAba("atividades")}
-            />
-            <AbaAtividades
-              id={idPainelAtividades}
-              rotuloId={idAbaAtividades}
-              ativa={aba === "atividades"}
-              parte="lista"
-              leadId={lead.id}
-              tenantId={tenantId}
-              podeEditar={podeEditar}
-              pedidoConsulta={0}
-              agendaLigada={agendaLigada}
-              agendaConectada={agendaConectada}
               onAgendaIndisponivel={() => setAgendaConectada(false)}
               onMudou={onAtividadeMudou}
             />
@@ -532,6 +522,9 @@ function AbaHistorico({
   const [texto, setTexto] = useState("");
   const [data, setData] = useState("");
   const [hora, setHora] = useState("");
+  const [registrando, setRegistrando] = useState(false);
+  const [erroRegistro, setErroRegistro] = useState<string | null>(null);
+  const tituloRegistro = useId();
   const [editandoId, setEditandoId] = useState<string | null>(null);
   const [textoEditado, setTextoEditado] = useState("");
   const [dataEditada, setDataEditada] = useState("");
@@ -585,12 +578,12 @@ function AbaHistorico({
     if (!podeEditar || enviando.current) return;
     const ocorrida = ocorridaDigitada(data, hora);
     if (ocorrida === "incompleta") {
-      setErro(MSG_PARCIAL);
+      setErroRegistro(MSG_PARCIAL);
       return;
     }
     enviando.current = true;
     setOcupado(true);
-    setErro(null);
+    setErroRegistro(null);
     try {
       const criada = await InteracaoService.criar(leadId, tenantId, {
         tipo,
@@ -602,8 +595,9 @@ function AbaHistorico({
       setTexto("");
       setData("");
       setHora("");
+      setRegistrando(false);
     } catch (err) {
-      setErro(mensagemDaInteracao(err, false));
+      setErroRegistro(mensagemDaInteracao(err, false));
     } finally {
       enviando.current = false;
       setOcupado(false);
@@ -664,26 +658,64 @@ function AbaHistorico({
 
   const podeMexer = (autorEmail: string) => podeEditar && autorEmail !== "" && autorEmail === emailDaSessao;
 
+  const fecharRegistro = () => {
+    if (ocupado) return;
+    setRegistrando(false);
+    setErroRegistro(null);
+    setTipo("nota");
+    setTexto("");
+    setData("");
+    setHora("");
+  };
+
   return (
     <div role="tabpanel" id={id} aria-labelledby={rotuloId} hidden={!ativa} className="flex-1 overflow-y-auto px-6 py-4">
       {erro && <p role="alert" className="mb-4 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">{erro}</p>}
       {podeEditar && (
-        <form aria-label="Nova interação" onSubmit={registrar} hidden={editandoId !== null} className="mb-6 space-y-3">
-          <CamposDaOcorrencia
-            tipo={tipo}
-            onTipo={setTipo}
-            texto={texto}
-            onTexto={setTexto}
-            data={data}
-            onData={setData}
-            hora={hora}
-            onHora={setHora}
-            mostrarTipo
-          />
-          <button type="submit" disabled={ocupado} className="w-full rounded-md bg-brand-blue p-3 font-bold text-white disabled:cursor-not-allowed disabled:opacity-50">
-            Registrar
-          </button>
-        </form>
+        <button type="button" onClick={() => setRegistrando(true)} disabled={ocupado} className="mb-6 w-full rounded-md bg-brand-blue p-3 font-bold text-white disabled:cursor-not-allowed disabled:opacity-50">
+          Novo registro
+        </button>
+      )}
+      {registrando && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4 text-gray-900" onClick={fecharRegistro}>
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby={tituloRegistro}
+            onClick={(evento) => evento.stopPropagation()}
+            onKeyDown={(evento) => {
+              if (evento.key === "Escape") {
+                evento.stopPropagation();
+                fecharRegistro();
+              }
+            }}
+            className="max-h-[90vh] w-full max-w-md overflow-y-auto rounded-lg bg-white p-6 shadow-xl"
+          >
+            <div className="mb-4 flex items-center justify-between">
+              <h2 id={tituloRegistro} className="text-lg font-bold">Novo registro</h2>
+              <button type="button" onClick={fecharRegistro} aria-label="Fechar" className="p-2 text-gray-500 hover:text-gray-800">
+                <X size={20} aria-hidden="true" />
+              </button>
+            </div>
+            {erroRegistro && <p role="alert" className="mb-4 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">{erroRegistro}</p>}
+            <form aria-label="Nova interação" onSubmit={registrar} className="space-y-3">
+              <CamposDaOcorrencia
+                tipo={tipo}
+                onTipo={setTipo}
+                texto={texto}
+                onTexto={setTexto}
+                data={data}
+                onData={setData}
+                hora={hora}
+                onHora={setHora}
+                mostrarTipo
+              />
+              <button type="submit" disabled={ocupado} className="w-full rounded-md bg-brand-blue p-3 font-bold text-white disabled:cursor-not-allowed disabled:opacity-50">
+                Registrar
+              </button>
+            </form>
+          </div>
+        </div>
       )}
 
       {carregando && itens.length === 0 && <p>Carregando histórico…</p>}
@@ -842,7 +874,6 @@ function AbaAtividades({
   id,
   rotuloId,
   ativa,
-  parte,
   leadId,
   tenantId,
   podeEditar,
@@ -851,15 +882,14 @@ function AbaAtividades({
   acaoDoMovimento,
   agendaLigada = false,
   agendaConectada = false,
+  duracaoPadrao = 50,
   onAgendaIndisponivel,
   onConcluirMovimento,
   onMudou,
-  onRegistrada,
 }: {
   id: string;
   rotuloId: string;
   ativa: boolean;
-  parte: "formulario" | "lista";
   leadId: string;
   tenantId: string;
   podeEditar: boolean;
@@ -868,21 +898,25 @@ function AbaAtividades({
   acaoDoMovimento?: string;
   agendaLigada?: boolean;
   agendaConectada?: boolean;
+  duracaoPadrao?: number;
   onAgendaIndisponivel?: () => void;
   onConcluirMovimento?: (corpo: { tipo: string; descricao: string; vence_em: string; duracao_min?: number; lembrar_antes_min?: number; google_agenda?: boolean }) => Promise<void>;
   onMudou?: () => void;
-  onRegistrada?: () => void;
 }) {
   const pedido = useRef(0);
+  const geracao = useRef(0);
   const enviando = useRef(false);
+  const duracaoTocada = useRef(false);
   const [itens, setItens] = useState<Atividade[]>([]);
   const [carregando, setCarregando] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
+  const [erroRegistro, setErroRegistro] = useState<string | null>(null);
+  const [registrando, setRegistrando] = useState(false);
   const [tipo, setTipo] = useState<TipoDeAtividade>("consulta");
   const [descricao, setDescricao] = useState("");
   const [data, setData] = useState("");
   const [hora, setHora] = useState("");
-  const [duracao, setDuracao] = useState("");
+  const [duracao, setDuracao] = useState(String(duracaoPadrao));
   const [lembrete, setLembrete] = useState("");
   const [ocupado, setOcupado] = useState(false);
   const [sincronizarAgenda, setSincronizarAgenda] = useState(false);
@@ -893,19 +927,26 @@ function AbaAtividades({
   }, [agendaConectada]);
 
   useEffect(() => {
-    if (parte !== "formulario") return;
-    if (tipoInicial) setTipo(tipoInicial);
-  }, [parte, tipoInicial, pedidoConsulta]);
+    if (duracaoTocada.current) return;
+    setDuracao(String(duracaoPadrao));
+  }, [duracaoPadrao]);
+
+  useEffect(() => {
+    if (!tipoInicial || pedidoConsulta === 0) return;
+    setTipo(tipoInicial);
+    setRegistrando(true);
+  }, [tipoInicial, pedidoConsulta]);
 
   useEffect(() => {
     if (!ativa) return;
     const atual = ++pedido.current;
+    const geracaoNoPedido = geracao.current;
     let cancelado = false;
     setCarregando(true);
     setErro(null);
     AtividadeService.listar(leadId, tenantId)
       .then((pagina) => {
-        if (cancelado || atual !== pedido.current) return;
+        if (cancelado || atual !== pedido.current || geracaoNoPedido !== geracao.current) return;
         setItens(ordenarPorVencimento(pagina.itens ?? []));
       })
       .catch((err) => {
@@ -924,17 +965,17 @@ function AbaAtividades({
     evento.preventDefault();
     if (!podeEditar || enviando.current) return;
     if (!data || !hora) {
-      setErro(MSG_ATIVIDADE_QUANDO);
+      setErroRegistro(MSG_ATIVIDADE_QUANDO);
       return;
     }
     enviando.current = true;
     setOcupado(true);
-    setErro(null);
+    setErroRegistro(null);
     const corpo = {
       tipo,
       descricao,
       vence_em: paraUTC(data, hora),
-      ...(tipo === "consulta" && /^\d+$/.test(duracao) ? { duracao_min: Number(duracao) } : {}),
+      ...(/^\d+$/.test(duracao) ? { duracao_min: Number(duracao) } : {}),
       ...(lembrete !== "" ? { lembrar_antes_min: Number(lembrete) } : {}),
       ...(agendaLigada && sincronizarAgenda ? { google_agenda: true } : {}),
     };
@@ -949,12 +990,13 @@ function AbaAtividades({
       setDescricao("");
       setData("");
       setHora("");
-      setDuracao("");
+      duracaoTocada.current = false;
+      setDuracao(String(duracaoPadrao));
       setLembrete("");
+      setRegistrando(false);
       onMudou?.();
-      onRegistrada?.();
     } catch (err) {
-      setErro(mensagemDaAtividade(err, false));
+      setErroRegistro(mensagemDaAtividade(err, false));
     } finally {
       enviando.current = false;
       setOcupado(false);
@@ -981,13 +1023,17 @@ function AbaAtividades({
   };
 
   const sincronizarItem = async (item: Atividade) => {
-    if (!podeEditar || enviando.current || !agendaConectada) return;
+    if (!podeEditar || enviando.current) return;
     enviando.current = true;
     setOcupado(true);
     setErro(null);
     try {
       const atualizada = await AtividadeService.sincronizar(leadId, item.id, tenantId);
+      geracao.current += 1;
       setItens((atual) => ordenarPorVencimento(atual.map((outro) => (outro.id === item.id ? atualizada : outro))));
+      if (atualizada.google_situacao !== "ok" || !atualizada.google_evento_link) {
+        setErro("Não foi possível pôr na sua agenda. Tente de novo.");
+      }
     } catch (err) {
       const data = (err as { response?: { data?: { error?: string } } } | null)?.response?.data;
       if (data?.error === "agenda_indisponivel") onAgendaIndisponivel?.();
@@ -1001,8 +1047,34 @@ function AbaAtividades({
   return (
     <div role="tabpanel" id={id} aria-labelledby={rotuloId} hidden={!ativa} className="flex-1 overflow-y-auto px-6 py-4">
       {erro && <p role="alert" className="mb-4 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">{erro}</p>}
-      {parte === "formulario" && podeEditar && (
-        <form aria-label="Nova atividade" onSubmit={registrar} noValidate className="mb-6 space-y-3">
+      {podeEditar && (
+        <button type="button" onClick={() => setRegistrando(true)} disabled={ocupado} className="mb-6 w-full rounded-md bg-brand-blue p-3 font-bold text-white disabled:cursor-not-allowed disabled:opacity-50">
+          Nova atividade
+        </button>
+      )}
+      {registrando && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4 text-gray-900" onClick={() => { if (!ocupado) setRegistrando(false); }}>
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby={`${base}-titulo`}
+            onClick={(evento) => evento.stopPropagation()}
+            onKeyDown={(evento) => {
+              if (evento.key === "Escape") {
+                evento.stopPropagation();
+                if (!ocupado) setRegistrando(false);
+              }
+            }}
+            className="max-h-[90vh] w-full max-w-md overflow-y-auto rounded-lg bg-white p-6 shadow-xl"
+          >
+            <div className="mb-4 flex items-center justify-between">
+              <h2 id={`${base}-titulo`} className="text-lg font-bold">Nova atividade</h2>
+              <button type="button" onClick={() => { if (!ocupado) setRegistrando(false); }} aria-label="Fechar" className="p-2 text-gray-500 hover:text-gray-800">
+                <X size={20} aria-hidden="true" />
+              </button>
+            </div>
+            {erroRegistro && <p role="alert" className="mb-4 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">{erroRegistro}</p>}
+            <form aria-label="Nova atividade" onSubmit={registrar} noValidate className="space-y-3">
           <div>
             <label htmlFor={`${base}-tipo`} className="text-xs font-bold uppercase text-gray-500">Tipo</label>
             <select
@@ -1046,18 +1118,19 @@ function AbaAtividades({
             </div>
           </div>
           <p className="text-xs text-gray-500">Horário de Brasília.</p>
-          {tipo === "consulta" && (
-            <div>
-              <label htmlFor={`${base}-duracao`} className="text-xs font-bold uppercase text-gray-500">Duração (min)</label>
-              <input
-                id={`${base}-duracao`}
-                inputMode="numeric"
-                value={duracao}
-                onChange={(evento) => setDuracao(evento.target.value)}
-                className="mt-1 w-full rounded-md border p-2 outline-none focus:ring-2 focus:ring-brand-blue"
-              />
-            </div>
-          )}
+          <div>
+            <label htmlFor={`${base}-duracao`} className="text-xs font-bold uppercase text-gray-500">Duração (min)</label>
+            <input
+              id={`${base}-duracao`}
+              inputMode="numeric"
+              value={duracao}
+              onChange={(evento) => {
+                duracaoTocada.current = true;
+                setDuracao(evento.target.value);
+              }}
+              className="mt-1 w-full rounded-md border p-2 outline-none focus:ring-2 focus:ring-brand-blue"
+            />
+          </div>
           <div>
             <label htmlFor={`${base}-lembrete`} className="text-xs font-bold uppercase text-gray-500">Lembrete</label>
             <select
@@ -1090,13 +1163,15 @@ function AbaAtividades({
           <button type="submit" disabled={ocupado} className="w-full rounded-md bg-brand-blue p-3 font-bold text-white disabled:cursor-not-allowed disabled:opacity-50">
             Registrar atividade
           </button>
-        </form>
+            </form>
+          </div>
+        </div>
       )}
 
-      {parte === "lista" && carregando && itens.length === 0 && <p>Carregando atividades…</p>}
-      {parte === "lista" && !carregando && itens.length === 0 && !erro && <p className="py-4 text-center text-sm italic text-gray-400">Nenhuma atividade registrada.</p>}
+      {carregando && itens.length === 0 && <p>Carregando atividades…</p>}
+      {!carregando && itens.length === 0 && !erro && <p className="py-4 text-center text-sm italic text-gray-400">Nenhuma atividade registrada.</p>}
 
-      {parte === "lista" && <div className="space-y-3">
+      <div className="space-y-3">
         {itens.map((item) => {
           const rotulo = rotuloDaAtividade(item.tipo);
           const lembreteItem = rotuloDoLembrete(item.lembrar_antes_min);
@@ -1110,19 +1185,20 @@ function AbaAtividades({
               {item.duracao_min !== undefined && <p className="text-xs text-gray-500">{item.duracao_min} min</p>}
               {item.google_situacao === "ok" && item.google_evento_link && (
                 <p className="mt-1 text-xs font-bold text-gray-700">
-                  Na agenda{" "}
-                  <a href={item.google_evento_link} className="text-brand-blue">Abrir evento</a>
+                  Na agenda · <a href={item.google_evento_link} className="text-brand-blue">Abrir evento</a>
                 </p>
               )}
               {agendaLigada && podeEditar && !(item.google_situacao === "ok" && item.google_evento_link) && (
-                <div className="mt-3">
-                  <button type="button" onClick={() => sincronizarItem(item)} disabled={!agendaConectada || ocupado} className="rounded-md bg-gray-100 px-3 py-1.5 text-sm font-bold disabled:opacity-50">Sincronizar</button>
+                <>
+                  <p className="mt-1 text-xs font-bold text-gray-700">
+                    <button type="button" onClick={() => sincronizarItem(item)} disabled={ocupado} className="border-0 bg-transparent p-0 font-bold text-brand-blue disabled:opacity-50">Sincronizar</button>
+                  </p>
                   {!agendaConectada && (
                     <p className="mt-1 text-xs text-gray-600">
                       Conecte o Google Agenda em <a href="/settings?aba=google-agenda" className="font-bold text-brand-blue">Configurações</a> para sincronizar.
                     </p>
                   )}
-                </div>
+                </>
               )}
               {podeEditar && item.situacao === "pendente" && (
                 <div className="mt-3 flex gap-2">
@@ -1133,7 +1209,7 @@ function AbaAtividades({
             </article>
           );
         })}
-      </div>}
+      </div>
     </div>
   );
 }

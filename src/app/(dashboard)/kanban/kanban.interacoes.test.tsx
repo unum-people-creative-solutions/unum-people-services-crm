@@ -124,7 +124,14 @@ async function abrirGaveta() {
 async function abrirHistorico(user: ReturnType<typeof userEvent.setup>, dialog: HTMLElement) {
   await user.click(within(dialog).getByRole('tab', { name: 'Histórico' }));
   await within(dialog).findByRole('article', { name: 'Ligação de Ana Lima' });
-  return within(dialog).getByRole('form', { name: 'Nova interação' });
+}
+
+async function abrirRegistro(user: ReturnType<typeof userEvent.setup>, dialog: HTMLElement) {
+  await abrirHistorico(user, dialog);
+  expect(within(dialog).queryByRole('textbox', { name: 'Texto' })).not.toBeInTheDocument();
+  await user.click(within(dialog).getByRole('button', { name: 'Novo registro' }));
+  const modal = await screen.findByRole('dialog', { name: 'Novo registro' });
+  return within(modal).getByRole('form', { name: 'Nova interação' });
 }
 
 function erroApi(status: number, data: Record<string, string>) {
@@ -239,6 +246,8 @@ describe('Ficha do lead (INT-12, INT-13, INT-14)', () => {
       }
     }
     expect(within(dialog).queryByRole('button', { name: 'Carregar mais' })).not.toBeInTheDocument();
+    expect(within(dialog).getByRole('button', { name: 'Novo registro' })).toBeInTheDocument();
+    expect(within(dialog).queryByRole('textbox', { name: 'Texto' })).not.toBeInTheDocument();
   });
 
   it('Registrar com data e hora manda ocorrida_em em UTC, no deslocamento -03:00', async () => {
@@ -254,7 +263,7 @@ describe('Ficha do lead (INT-12, INT-13, INT-14)', () => {
     });
     renderKanban();
     const { user, dialog } = await abrirGaveta();
-    const nova = await abrirHistorico(user, dialog);
+    const nova = await abrirRegistro(user, dialog);
     await user.selectOptions(within(nova).getByRole('combobox', { name: 'Tipo' }), 'reuniao');
     await user.type(within(nova).getByRole('textbox', { name: 'Texto' }), 'Reunião marcada');
     fireEvent.change(within(nova).getByLabelText(/^Data$/), { target: { value: '2026-11-11' } });
@@ -267,8 +276,8 @@ describe('Ficha do lead (INT-12, INT-13, INT-14)', () => {
       ocorrida_em: '2026-11-11T18:30:00Z',
     }));
     expect(await within(dialog).findByText('Reunião marcada')).toBeInTheDocument();
-    expect(within(dialog).getByRole('textbox', { name: 'Texto' })).toHaveValue('');
-    expect(within(dialog).getByRole('combobox', { name: 'Tipo' })).toHaveValue('nota');
+    expect(screen.queryByRole('dialog', { name: 'Novo registro' })).not.toBeInTheDocument();
+    expect(within(dialog).queryByRole('textbox', { name: 'Texto' })).not.toBeInTheDocument();
   });
 
   it('Registrar sem data não manda ocorrida_em', async () => {
@@ -284,7 +293,7 @@ describe('Ficha do lead (INT-12, INT-13, INT-14)', () => {
     });
     renderKanban();
     const { user, dialog } = await abrirGaveta();
-    const nova = await abrirHistorico(user, dialog);
+    const nova = await abrirRegistro(user, dialog);
     await user.type(within(nova).getByRole('textbox', { name: 'Texto' }), 'Só o texto');
     await user.click(within(nova).getByRole('button', { name: 'Registrar' }));
 
@@ -298,7 +307,7 @@ describe('Ficha do lead (INT-12, INT-13, INT-14)', () => {
   it('só a data, sem a hora, avisa e não chama o POST; o rascunho fica', async () => {
     renderKanban();
     const { user, dialog } = await abrirGaveta();
-    const nova = await abrirHistorico(user, dialog);
+    const nova = await abrirRegistro(user, dialog);
     await user.type(within(nova).getByRole('textbox', { name: 'Texto' }), 'rascunho que fica');
     fireEvent.change(within(nova).getByLabelText(/^Data$/), { target: { value: '2026-11-11' } });
     await user.click(within(nova).getByRole('button', { name: 'Registrar' }));
@@ -319,7 +328,7 @@ describe('Ficha do lead (INT-12, INT-13, INT-14)', () => {
     );
     renderKanban();
     const { user, dialog } = await abrirGaveta();
-    const nova = await abrirHistorico(user, dialog);
+    const nova = await abrirRegistro(user, dialog);
     await user.selectOptions(within(nova).getByRole('combobox', { name: 'Tipo' }), 'ligacao');
     await user.type(within(nova).getByRole('textbox', { name: 'Texto' }), 'rascunho que fica');
     await user.click(within(nova).getByRole('button', { name: 'Registrar' }));
@@ -335,7 +344,7 @@ describe('Ficha do lead (INT-12, INT-13, INT-14)', () => {
     );
     renderKanban();
     const { user, dialog } = await abrirGaveta();
-    const nova = await abrirHistorico(user, dialog);
+    const nova = await abrirRegistro(user, dialog);
     await user.type(within(nova).getByRole('textbox', { name: 'Texto' }), 'rascunho que fica');
     await user.click(within(nova).getByRole('button', { name: 'Registrar' }));
 
@@ -446,6 +455,7 @@ describe('Ficha do lead (INT-12, INT-13, INT-14)', () => {
 
     await user.click(within(dialog).getByRole('tab', { name: 'Histórico' }));
     expect(await within(dialog).findByText('Ligou e pediu retorno amanhã.')).toBeInTheDocument();
+    expect(within(dialog).queryByRole('button', { name: 'Novo registro' })).not.toBeInTheDocument();
     expect(within(dialog).queryByRole('button', { name: 'Registrar' })).not.toBeInTheDocument();
     expect(within(dialog).queryByRole('button', { name: 'Editar' })).not.toBeInTheDocument();
     expect(within(dialog).queryByRole('button', { name: 'Apagar' })).not.toBeInTheDocument();
