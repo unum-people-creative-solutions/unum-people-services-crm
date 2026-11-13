@@ -1,4 +1,4 @@
-import { render, screen, fireEvent, act } from '@testing-library/react';
+import { render, screen, fireEvent, act, within } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { AgendamentoModal } from './AgendamentoModal';
 import api from '@/services/api';
@@ -127,7 +127,36 @@ describe('AgendamentoModal com o Google Agenda', () => {
       const agendar = screen.getByRole('button', { name: 'Confirmar agendamento' });
       expect(agendar).toBeEnabled();
       fireEvent.click(agendar);
+      expect(props.onConfirmar).not.toHaveBeenCalled();
+      const confirmacao = screen.getByRole('dialog', { name: 'Horário ocupado' });
+      expect(within(confirmacao).getByRole('status').textContent).toBe('Esse horário já está ocupado na sua agenda (16:00–17:00).');
+      fireEvent.click(within(confirmacao).getByRole('button', { name: 'Salvar mesmo assim' }));
       expect(props.onConfirmar).toHaveBeenCalledWith('2026-11-11T18:30:00Z', { duracao_min: 50, google_agenda: true });
+    });
+
+    it('clique antes dos 400 ms ainda abre a confirmação quando o horário está ocupado', async () => {
+      const props = montar();
+      await carregar();
+      preencher('2026-11-11', '15:30');
+      fireEvent.click(screen.getByRole('button', { name: 'Confirmar agendamento' }));
+      expect(props.onConfirmar).not.toHaveBeenCalled();
+      await act(async () => {});
+      expect(screen.getByRole('dialog', { name: 'Horário ocupado' })).toHaveTextContent('Esse horário já está ocupado na sua agenda (16:00–17:00).');
+      expect(chamadasOcupado()).toHaveLength(1);
+    });
+
+    it('conflito: ajustar a data para um horário livre e salvar esse horário', async () => {
+      const props = montar();
+      await carregar();
+      preencher('2026-11-11', '15:30');
+      await act(async () => { vi.advanceTimersByTime(400); });
+      fireEvent.click(screen.getByRole('button', { name: 'Confirmar agendamento' }));
+      const confirmacao = screen.getByRole('dialog', { name: 'Horário ocupado' });
+      respostaOcupado = async () => ({ data: { ocupado: [] } });
+      fireEvent.change(within(confirmacao).getByLabelText('Data'), { target: { value: '2026-11-12' } });
+      await act(async () => { vi.advanceTimersByTime(400); });
+      fireEvent.click(within(confirmacao).getByRole('button', { name: 'Salvar' }));
+      expect(props.onConfirmar).toHaveBeenCalledWith('2026-11-12T18:30:00Z', { duracao_min: 50, google_agenda: true });
     });
 
     it('vários intervalos separados por ", "', async () => {

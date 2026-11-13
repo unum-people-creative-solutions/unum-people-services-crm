@@ -357,7 +357,7 @@ export interface NovaAtividade {
   google_agenda?: boolean;
 }
 
-function urlAtividades(leadId: string, tenantId?: string, atividadeId?: string, acao?: 'concluir' | 'cancelar' | 'sincronizar') {
+function urlAtividades(leadId: string, tenantId?: string, atividadeId?: string, acao?: 'concluir' | 'cancelar' | 'sincronizar' | 'alterar') {
   let base = `/leads/${encodeURIComponent(leadId)}/atividades`;
   if (atividadeId) base += `/${encodeURIComponent(atividadeId)}`;
   if (acao) base += `/${acao}`;
@@ -392,8 +392,13 @@ export const AtividadeService = {
     const response = await api.post(urlAtividades(leadId, tenantId, atividadeId, 'cancelar'));
     return response.data;
   },
-  sincronizar: async (leadId: string, atividadeId: string, tenantId?: string): Promise<Atividade> => {
-    const response = await api.post(urlAtividades(leadId, tenantId, atividadeId, 'sincronizar'));
+  sincronizar: async (leadId: string, atividadeId: string, tenantId?: string, corpo?: { vence_em: string }): Promise<Atividade> => {
+    const url = urlAtividades(leadId, tenantId, atividadeId, 'sincronizar');
+    const response = corpo?.vence_em ? await api.post(url, { vence_em: corpo.vence_em }) : await api.post(url);
+    return response.data;
+  },
+  alterar: async (leadId: string, atividadeId: string, tenantId: string | undefined, corpo: NovaAtividade): Promise<Atividade> => {
+    const response = await api.post(urlAtividades(leadId, tenantId, atividadeId, 'alterar'), corpoNovaAtividade(corpo));
     return response.data;
   },
 };

@@ -38,11 +38,27 @@ export function rotuloDoLembrete(minutos: number | undefined): string | null {
   return achado ? achado.rotulo : null;
 }
 
+export function textoDoLembrete(minutos: number | undefined): string | null {
+  const rotulo = rotuloDoLembrete(minutos);
+  if (!rotulo) return null;
+  if (minutos === 0) return 'Lembrete — na hora';
+  return `Lembrete — ${rotulo} antes`;
+}
+
+export function textoDaDuracao(minutos: number | undefined): string | null {
+  if (minutos === undefined || minutos <= 0) return null;
+  return `Duração — ${minutos} min`;
+}
+
 export const ROTULO_DA_SITUACAO: Record<string, string> = {
   pendente: 'Pendente',
   feita: 'Feita',
   cancelada: 'Cancelada',
 };
+
+export function textoDaSituacao(situacao: string): string {
+  return `Status — ${ROTULO_DA_SITUACAO[situacao] ?? situacao}`;
+}
 
 type ComVencimento = { situacao: string; vence_em: string };
 
