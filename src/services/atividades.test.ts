@@ -145,5 +145,11 @@ describe('AtividadeService (ATV-06)', () => {
     mockPost.mockResolvedValue({ data: sincronizada, status: 200 });
     await expect(AtividadeService.sincronizar('l1', 'a1', 't1')).resolves.toEqual(sincronizada);
     expect(mockPost).toHaveBeenCalledWith('/leads/l1/atividades/a1/sincronizar?tenant_id=t1');
+    await expect(AtividadeService.sincronizar('l1', 'a1', 't1', { vence_em: '2026-11-13T18:30:00Z' })).resolves.toEqual(sincronizada);
+    expect(mockPost).toHaveBeenLastCalledWith('/leads/l1/atividades/a1/sincronizar?tenant_id=t1', { vence_em: '2026-11-13T18:30:00Z' });
+    await expect(AtividadeService.alterar('l1', 'a1', 't1', { tipo: 'ligar', descricao: 'retorno', vence_em: '2026-11-13T18:30:00Z', duracao_min: 40 })).resolves.toEqual(sincronizada);
+    expect(mockPost).toHaveBeenLastCalledWith('/leads/l1/atividades/a1/alterar?tenant_id=t1', {
+      tipo: 'ligar', descricao: 'retorno', vence_em: '2026-11-13T18:30:00Z', duracao_min: 40,
+    });
   });
 });

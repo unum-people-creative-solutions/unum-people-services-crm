@@ -5,6 +5,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { Calendar } from "lucide-react";
 import { paraUTC, partesEmBrasilia, semLembretePush, validarAgendamento } from "@/lib/agendamento";
 import { URL_ABA_GOOGLE_AGENDA } from "@/lib/google-agenda";
+import { ModalDeConflito, conflitosNoHorario } from "@/components/ModalDeConflito";
 import { GoogleAgendaService, type AgendamentoNoGoogle, type SituacaoGoogleAgenda } from "@/services/api";
 
 // Modal de agendamento do quadro (spec crm-agendamento-e-lembretes RF-52;
@@ -80,7 +81,13 @@ function ConteudoDoModal({ modo, nomeDoLead, valorInicial, enviando, erro, onCon
   const [duracao, setDuracao] = useState("");
   const [noGoogle, setNoGoogle] = useState(modo === "mover" || !!googleAgenda?.temEvento);
   const [ocupados, setOcupados] = useState<string[]>([]);
+  const [pedirConflito, setPedirConflito] = useState(false);
+  const [conferindo, setConferindo] = useState(false);
   const mudouHorario = useRef(false);
+  const conflitoAberto = useRef(false);
+  const consulta = useRef({ chave: "", pronta: false });
+  const conferindoAgora = useRef(false);
+  conflitoAberto.current = pedirConflito;
   const tenantId = googleAgenda?.tenantId;
   const leadId = googleAgenda?.leadId;
   const duracaoDoLead = googleAgenda?.duracaoDoLead;
@@ -109,6 +116,8 @@ function ConteudoDoModal({ modo, nomeDoLead, valorInicial, enviando, erro, onCon
     if (!mudouHorario.current || !ativa || !tenantId) return;
     setOcupados([]);
     const minutos = Number(duracao);
+    const chave = `${data}|${hora}|${duracao}`;
+    consulta.current = { chave, pronta: false };
     if (!data || !hora || !Number.isFinite(minutos) || minutos <= 0) return;
     const inicio = paraUTC(data, hora);
     const fim = new Date(Date.parse(inicio) + minutos * MINUTO).toISOString().replace(/\.\d{3}Z$/, "Z");
@@ -117,10 +126,14 @@ function ConteudoDoModal({ modo, nomeDoLead, valorInicial, enviando, erro, onCon
       GoogleAgendaService.ocupado(tenantId, inicio, fim, modo === "alterar" ? leadId : undefined)
         .then((intervalos) => {
           if (cancelado) return;
+          consulta.current = { chave, pronta: true };
           setOcupados(intervalos.map((i) => `${partesEmBrasilia(i.inicio).hora}–${partesEmBrasilia(i.fim).hora}`));
         })
         // RF-22: com erro, o aviso só não aparece (nunca bloqueia o agendamento).
-        .catch((err) => console.error("Falha ao consultar horários ocupados", err));
+        .catch((err) => {
+          console.error("Falha ao consultar horários ocupados", err);
+          if (!cancelado) consulta.current = { chave, pronta: true };
+        });
     }, ATRASO_DO_CONFLITO);
     return () => {
       cancelado = true;
@@ -153,7 +166,7 @@ function ConteudoDoModal({ modo, nomeDoLead, valorInicial, enviando, erro, onCon
 
   useEffect(() => {
     const aoTeclar = (e: KeyboardEvent) => {
-      if (e.key === "Escape") cancelarRef.current();
+      if (e.key === "Escape" && !conflitoAberto.current) cancelarRef.current();
     };
     document.addEventListener("keydown", aoTeclar);
     return () => document.removeEventListener("keydown", aoTeclar);
@@ -185,7 +198,7 @@ function ConteudoDoModal({ modo, nomeDoLead, valorInicial, enviando, erro, onCon
 
   const confirmar = (e: React.FormEvent) => {
     e.preventDefault();
-    if (enviando) return;
+    if (enviando || conferindo) return;
     let novoErroData: string | null = data ? null : "Informe a data.";
     let novoErroHora: string | null = hora ? null : "Informe a hora.";
     let iso: string | null = null;
@@ -197,10 +210,59 @@ function ConteudoDoModal({ modo, nomeDoLead, valorInicial, enviando, erro, onCon
     }
     setErroData(novoErroData);
     setErroHora(novoErroHora);
-    if (iso && !novoErroData && !novoErroHora) {
-      if (ativa) onConfirmar(iso, { duracao_min: Number(duracao), google_agenda: noGoogle });
-      else onConfirmar(iso);
+    if (!(iso && !novoErroData && !novoErroHora)) return;
+    const minutos = Number(duracao);
+    if (ativa && noGoogle && Number.isFinite(minutos) && minutos > 0) {
+      const chave = `${data}|${hora}|${duracao}`;
+      const jaViu = consulta.current.chave === chave && consulta.current.pronta;
+      if (!jaViu) {
+        void consultarEConfirmar(iso, minutos);
+        return;
+      }
+      if (ocupados.length > 0) {
+        setPedirConflito(true);
+        return;
+      }
     }
+    if (ativa) onConfirmar(iso, { duracao_min: minutos, google_agenda: noGoogle });
+    else onConfirmar(iso);
+  };
+
+  const consultarEConfirmar = async (iso: string, minutos: number) => {
+    if (!tenantId || conferindoAgora.current) return;
+    conferindoAgora.current = true;
+    setConferindo(true);
+    const intervalos = await conflitosNoHorario(tenantId, iso, minutos, modo === "alterar" ? leadId : undefined);
+    conferindoAgora.current = false;
+    setConferindo(false);
+    consulta.current = { chave: `${data}|${hora}|${duracao}`, pronta: true };
+    if (intervalos && intervalos.length > 0) {
+      setOcupados(intervalos);
+      setPedirConflito(true);
+      return;
+    }
+    onConfirmar(iso, { duracao_min: minutos, google_agenda: true });
+  };
+
+  const salvarMesmoEmConflito = (novaData: string, novaHora: string) => {
+    const novoIso = paraUTC(novaData, novaHora);
+    const problema = validarAgendamento(novoIso, new Date());
+    setData(novaData);
+    setHora(novaHora);
+    setPedirConflito(false);
+    if (problema === "Escolha um horário a partir de agora.") {
+      setErroHora(problema);
+      setErroData(null);
+      return;
+    }
+    if (problema) {
+      setErroData(problema);
+      setErroHora(null);
+      return;
+    }
+    setErroData(null);
+    setErroHora(null);
+    onConfirmar(novoIso, { duracao_min: Number(duracao), google_agenda: true });
   };
 
   let dicaCurta = false;
@@ -216,6 +278,7 @@ function ConteudoDoModal({ modo, nomeDoLead, valorInicial, enviando, erro, onCon
     }`;
 
   return (
+    <>
     <motion.div
       data-testid="agendamento-fundo"
       initial={{ opacity: 0 }}
@@ -346,8 +409,8 @@ function ConteudoDoModal({ modo, nomeDoLead, valorInicial, enviando, erro, onCon
 
             <button
               type="submit"
-              disabled={enviando}
-              aria-busy={enviando ? "true" : undefined}
+              disabled={enviando || conferindo}
+              aria-busy={enviando || conferindo ? "true" : undefined}
               className="w-full bg-brand-blue text-white p-4 rounded-md font-bold hover:brightness-110 transition-all disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-brand-blue"
             >
               {enviando ? "Salvando…" : textos.principal}
@@ -364,5 +427,18 @@ function ConteudoDoModal({ modo, nomeDoLead, valorInicial, enviando, erro, onCon
         </div>
       </motion.div>
     </motion.div>
+    {pedirConflito && tenantId && (
+      <ModalDeConflito
+        data={data}
+        hora={hora}
+        duracaoMin={Number(duracao)}
+        tenantId={tenantId}
+        leadId={modo === "alterar" ? leadId : undefined}
+        intervalos={ocupados}
+        onCancelar={() => setPedirConflito(false)}
+        onSalvar={(novaData, novaHora) => salvarMesmoEmConflito(novaData, novaHora)}
+      />
+    )}
+    </>
   );
 }

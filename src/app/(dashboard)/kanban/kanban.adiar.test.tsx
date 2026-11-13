@@ -192,10 +192,12 @@ describe('Adiar o lead (ADI-01, ADI-03, ADI-05)', () => {
     await abrirFiltros(user);
     const filtro = screen.getByRole('button', { name: 'Adiados (1)' });
     expect(filtro).toHaveAttribute('aria-pressed', 'false');
+    expect(filtro.querySelector('svg')).toBeNull();
     await user.click(filtro);
 
     expect(screen.getByRole('button', { name: 'Filtros, 1' })).toHaveAttribute('aria-pressed', 'true');
     expect(screen.getByRole('button', { name: 'Adiados (1)' })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByRole('button', { name: 'Adiados (1)' }).querySelector('svg')).not.toBeNull();
     expect(within(coluna).getByText('Maria Nova')).toBeInTheDocument();
     await user.click(within(coluna).getByRole('button', { name: 'Retomar agora' }));
 

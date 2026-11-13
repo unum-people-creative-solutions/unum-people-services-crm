@@ -38,8 +38,8 @@ vi.mock('@/services/api', async () => {
       listSalesByMonth: vi.fn(),
       agendar: vi.fn(),
     },
-    AtividadeService: { listar: vi.fn(), criar: vi.fn(), concluir: vi.fn(), cancelar: vi.fn(), sincronizar: vi.fn() },
-    GoogleAgendaService: { situacao: vi.fn() },
+    AtividadeService: { listar: vi.fn(), criar: vi.fn(), concluir: vi.fn(), cancelar: vi.fn(), sincronizar: vi.fn(), alterar: vi.fn() },
+    GoogleAgendaService: { situacao: vi.fn(), ocupado: vi.fn() },
     InteracaoService: { listar: vi.fn(), criar: vi.fn(), alterar: vi.fn(), apagar: vi.fn() },
     TenantService: { list: vi.fn(), listMyTenants: vi.fn() },
   };
@@ -193,6 +193,7 @@ describe('Atividades no quadro (ATV-06)', () => {
       situacao: 'cancelada',
     }));
     (GoogleAgendaService.situacao as ReturnType<typeof vi.fn>).mockResolvedValue({ conectada: false });
+    (GoogleAgendaService.ocupado as ReturnType<typeof vi.fn>).mockResolvedValue([]);
   });
 
   afterEach(() => {
@@ -245,10 +246,12 @@ describe('Atividades no quadro (ATV-06)', () => {
     const menu = screen.getByRole('group', { name: 'Filtros do quadro' });
     expect(menu.closest('nav')).toBeNull();
     expect(screen.getByRole('button', { name: 'Hoje' })).toHaveAttribute('aria-pressed', 'false');
+    expect(screen.getByRole('button', { name: 'Hoje' }).querySelector('svg')).toBeNull();
     await user.click(screen.getByRole('button', { name: 'Hoje' }));
 
     expect(screen.getByRole('button', { name: 'Filtros, 1' })).toHaveAttribute('aria-pressed', 'true');
     expect(screen.getByRole('button', { name: 'Hoje' })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByRole('button', { name: 'Hoje' }).querySelector('svg')).not.toBeNull();
     expect(screen.getByText('Maria Hoje')).toBeInTheDocument();
     expect(screen.getByText('Noite Limite')).toBeInTheDocument();
     expect(screen.queryByText('Bruno Amanha')).not.toBeInTheDocument();
@@ -316,6 +319,10 @@ describe('Atividades no quadro (ATV-06)', () => {
     expect(LeadService.updateStatus).not.toHaveBeenCalled();
     expect(screen.queryByRole('dialog', { name: 'Nova atividade' })).not.toBeInTheDocument();
     expect(within(dialog).getByRole('tab', { name: 'Atividades' })).toHaveAttribute('aria-selected', 'true');
+    const criada = within(dialog).getByRole('article', { name: 'Consulta: Retorno marcado' });
+    expect(criada).toHaveTextContent('Status — Pendente');
+    expect(criada).toHaveTextContent('Duração — 50 min');
+    expect(criada).not.toHaveTextContent('Cancelada');
   });
 
   it('Na hora manda lembrar_antes_min 0; 1 hora manda 60', async () => {
@@ -401,7 +408,10 @@ describe('Atividades no quadro (ATV-06)', () => {
     await user.click(within(dialog).getByRole('tab', { name: 'Atividades' }));
     const consulta = await within(dialog).findByRole('article', { name: 'Consulta: Retorno da avaliação' });
     expect(consulta).toHaveTextContent('qui 12/11 às 13:00');
-    expect(consulta).toHaveTextContent('Pendente');
+    expect(consulta).toHaveTextContent('Status — Pendente');
+    expect(consulta).toHaveTextContent('Lembrete — 15 min antes');
+    expect(consulta).toHaveTextContent('Duração — 50 min');
+    expect(consulta).not.toHaveTextContent('Cancelada');
     expect(within(consulta).getByRole('button', { name: 'Concluir' })).toBeInTheDocument();
     expect(within(within(dialog).getByRole('article', { name: 'Ligar: Já liguei' })).queryByRole('button', { name: 'Concluir' })).not.toBeInTheDocument();
 
@@ -417,6 +427,80 @@ describe('Atividades no quadro (ATV-06)', () => {
     expect(within(dialog).getByRole('article', { name: 'Tarefa: Enviar proposta' })).toHaveTextContent('Cancelada');
   });
 
+  it('editar uma atividade grava os campos novos', async () => {
+    (AtividadeService.alterar as ReturnType<typeof vi.fn>).mockImplementation(async (_lead: string, id: string, _tenant: string, corpo: { descricao: string }) => ({
+      ...atividades.itens[0],
+      id,
+      ...corpo,
+    }));
+    const user = userEvent.setup();
+    renderKanban();
+    await user.click(await screen.findByRole('button', { name: 'Editar lead' }));
+    const ficha = await screen.findByRole('dialog', { name: 'Ficha do lead' });
+    await user.click(within(ficha).getByRole('tab', { name: 'Atividades' }));
+    const consulta = await within(ficha).findByRole('article', { name: 'Consulta: Retorno da avaliação' });
+    expect(within(await within(ficha).findByRole('article', { name: 'Ligar: Já liguei' })).getByRole('button', { name: 'Editar' })).toBeEnabled();
+    await user.click(within(consulta).getByRole('button', { name: 'Editar' }));
+    const form = await screen.findByRole('dialog', { name: 'Editar atividade' });
+    expect(within(form).getByLabelText('Descrição')).toHaveValue('Retorno da avaliação');
+    expect(within(form).getByLabelText('Data')).toHaveValue('2026-11-12');
+    expect(within(form).getByLabelText('Hora')).toHaveValue('13:00');
+    expect(within(form).getByLabelText('Duração (min)')).toHaveValue('50');
+    expect(within(form).getByLabelText('Lembrete')).toHaveValue('15');
+    fireEvent.change(within(form).getByLabelText('Descrição'), { target: { value: 'Retorno remarcado' } });
+    await user.click(within(form).getByRole('button', { name: 'Salvar atividade' }));
+    await waitFor(() => expect(AtividadeService.alterar).toHaveBeenCalledWith('lead-hoje', CONSULTA, 'tenant-1', expect.objectContaining({
+      tipo: 'consulta',
+      descricao: 'Retorno remarcado',
+      vence_em: '2026-11-12T16:00:00Z',
+      duracao_min: 50,
+      lembrar_antes_min: 15,
+    })));
+    expect(await within(ficha).findByRole('article', { name: 'Consulta: Retorno remarcado' })).toBeInTheDocument();
+  });
+
+  it('atividade já na agenda pede confirmação se o horário novo conflita e atualiza o evento', async () => {
+    flags.googleAgenda = true;
+    porLead = {
+      'lead-hoje': {
+        itens: [{
+          ...atividades.itens[0],
+          google_situacao: 'ok',
+          google_evento_link: 'https://www.google.com/calendar/event?eid=abc',
+        }],
+      },
+    };
+    (GoogleAgendaService.situacao as ReturnType<typeof vi.fn>).mockResolvedValue({
+      conectada: true, situacao: 'ativa', email: 'a@b.c', agenda_id: 'primary', agenda_nome: 'Agenda', duracao_padrao_min: 50, conflito: true, lista_agendas: true,
+    });
+    (GoogleAgendaService.ocupado as ReturnType<typeof vi.fn>).mockResolvedValue([
+      { inicio: '2026-11-12T19:00:00Z', fim: '2026-11-12T20:00:00Z' },
+    ]);
+    (AtividadeService.alterar as ReturnType<typeof vi.fn>).mockImplementation(async (_lead: string, id: string, _tenant: string, corpo: object) => ({
+      ...atividades.itens[0],
+      id,
+      google_situacao: 'ok',
+      google_evento_link: 'https://www.google.com/calendar/event?eid=abc',
+      ...corpo,
+    }));
+    const user = userEvent.setup();
+    renderKanban();
+    await user.click(await screen.findByRole('button', { name: 'Editar lead' }));
+    const ficha = await screen.findByRole('dialog', { name: 'Ficha do lead' });
+    await user.click(within(ficha).getByRole('tab', { name: 'Atividades' }));
+    await user.click(within(await within(ficha).findByRole('article', { name: 'Consulta: Retorno da avaliação' })).getByRole('button', { name: 'Editar' }));
+    const form = await screen.findByRole('dialog', { name: 'Editar atividade' });
+    expect(within(form).getByText('Esta atividade está na agenda. Salvar atualiza o evento.')).toBeInTheDocument();
+    fireEvent.change(within(form).getByLabelText('Hora'), { target: { value: '16:30' } });
+    await user.click(within(form).getByRole('button', { name: 'Salvar atividade' }));
+    const confirmacao = await screen.findByRole('dialog', { name: 'Horário ocupado' });
+    expect(AtividadeService.alterar).not.toHaveBeenCalled();
+    await user.click(within(confirmacao).getByRole('button', { name: 'Salvar mesmo assim' }));
+    await waitFor(() => expect(AtividadeService.alterar).toHaveBeenCalledWith('lead-hoje', CONSULTA, 'tenant-1', expect.objectContaining({
+      vence_em: '2026-11-12T19:30:00Z',
+    })));
+  });
+
   it('sem crm.lead.editar a lista aparece e não há formulário nem Concluir', async () => {
     (AcessosService.get as ReturnType<typeof vi.fn>).mockResolvedValue(LEITOR);
     const user = userEvent.setup();
@@ -430,6 +514,7 @@ describe('Atividades no quadro (ATV-06)', () => {
     expect(await within(dialog).findByRole('article', { name: 'Consulta: Retorno da avaliação' })).toBeInTheDocument();
     expect(within(dialog).queryByRole('button', { name: 'Nova atividade' })).not.toBeInTheDocument();
     expect(within(dialog).queryByRole('form', { name: 'Nova atividade' })).not.toBeInTheDocument();
+    expect(within(dialog).queryByRole('button', { name: 'Editar' })).not.toBeInTheDocument();
     expect(within(dialog).queryByRole('button', { name: 'Concluir' })).not.toBeInTheDocument();
     expect(within(dialog).queryByRole('button', { name: 'Cancelar' })).not.toBeInTheDocument();
     expect(within(dialog).queryByRole('button', { name: 'Agendar consulta' })).not.toBeInTheDocument();
@@ -457,6 +542,7 @@ describe('Atividades no quadro (ATV-06)', () => {
     const consulta = await within(dialog).findByRole('article', { name: 'Consulta: Retorno da avaliação' });
     expect(consulta).toHaveTextContent('Na agenda · Abrir evento');
     expect(within(consulta).getByRole('link', { name: 'Abrir evento' })).toHaveAttribute('href', 'https://www.google.com/calendar/event?eid=abc');
+    expect(within(consulta).getByRole('link', { name: 'Abrir evento' })).toHaveAttribute('target', '_blank');
     expect(within(consulta).queryByRole('button', { name: 'Adicionar à agenda' })).not.toBeInTheDocument();
   });
 
@@ -580,7 +666,72 @@ describe('Atividades no quadro (ATV-06)', () => {
     await waitFor(() => expect(AtividadeService.sincronizar).toHaveBeenCalledWith('lead-hoje', TAREFA, 'tenant-1'));
     expect(within(dialog).getByRole('article', { name: 'Tarefa: Enviar proposta' })).toHaveTextContent('Na agenda · Abrir evento');
     expect(within(dialog).getByRole('link', { name: 'Abrir evento' })).toHaveAttribute('href', 'https://www.google.com/calendar/event?eid=abc');
+    expect(within(dialog).getByRole('link', { name: 'Abrir evento' })).toHaveAttribute('target', '_blank');
     expect(within(dialog).queryByRole('button', { name: 'Remover evento' })).not.toBeInTheDocument();
+  });
+
+  it('conflito ao registrar pede confirmação e salvar mesmo assim grava o horário', async () => {
+    flags.googleAgenda = true;
+    (GoogleAgendaService.situacao as ReturnType<typeof vi.fn>).mockResolvedValue({
+      conectada: true, situacao: 'ativa', email: 'a@b.c', agenda_id: 'primary', agenda_nome: 'Agenda', duracao_padrao_min: 50, conflito: true, lista_agendas: true,
+    });
+    (GoogleAgendaService.ocupado as ReturnType<typeof vi.fn>).mockResolvedValue([
+      { inicio: '2026-11-12T19:00:00Z', fim: '2026-11-12T20:00:00Z' },
+    ]);
+    const user = userEvent.setup();
+    renderKanban();
+    await user.click(await screen.findByRole('button', { name: 'Editar lead' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Ficha do lead' });
+    const form = await abrirNovaAtividade(user, dialog);
+    fireEvent.change(within(form).getByLabelText('Data'), { target: { value: '2026-11-12' } });
+    fireEvent.change(within(form).getByLabelText('Hora'), { target: { value: '15:30' } });
+    await user.click(within(form).getByRole('button', { name: 'Registrar atividade' }));
+    const confirmacao = await screen.findByRole('dialog', { name: 'Horário ocupado' });
+    expect(confirmacao).toHaveTextContent('Esse horário já está ocupado na sua agenda (16:00–17:00).');
+    expect(AtividadeService.criar).not.toHaveBeenCalled();
+    await user.click(within(confirmacao).getByRole('button', { name: 'Salvar mesmo assim' }));
+    await waitFor(() => expect(AtividadeService.criar).toHaveBeenCalled());
+    const corpo = (AtividadeService.criar as ReturnType<typeof vi.fn>).mock.calls.at(-1)?.[2];
+    expect(corpo.vence_em).toBe('2026-11-12T18:30:00Z');
+    expect(corpo.google_agenda).toBe(true);
+  });
+
+  it('conflito ao adicionar na agenda deixa ajustar a data e grava o horário novo', async () => {
+    flags.googleAgenda = true;
+    (GoogleAgendaService.situacao as ReturnType<typeof vi.fn>).mockResolvedValue({
+      conectada: true, situacao: 'ativa', email: 'a@b.c', agenda_id: 'primary', agenda_nome: 'Agenda', duracao_padrao_min: 50, conflito: true, lista_agendas: true,
+    });
+    (GoogleAgendaService.ocupado as ReturnType<typeof vi.fn>)
+      .mockResolvedValueOnce([{ inicio: '2026-11-12T21:00:00Z', fim: '2026-11-12T21:50:00Z' }])
+      .mockResolvedValue([]);
+    (AtividadeService.sincronizar as ReturnType<typeof vi.fn>).mockResolvedValue({
+      id: TAREFA,
+      tipo: 'tarefa',
+      descricao: 'Enviar proposta',
+      vence_em: '2026-11-13T21:00:00Z',
+      situacao: 'pendente',
+      criada_em: '2026-11-12T15:00:00Z',
+      criada_por: 'user@test.com',
+      google_situacao: 'ok',
+      google_evento_link: 'https://www.google.com/calendar/event?eid=novo',
+    });
+    const user = userEvent.setup();
+    renderKanban();
+    await user.click(await screen.findByRole('button', { name: 'Editar lead' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Ficha do lead' });
+    await user.click(within(dialog).getByRole('tab', { name: 'Atividades' }));
+    const tarefa = await within(dialog).findByRole('article', { name: 'Tarefa: Enviar proposta' });
+    await user.click(within(tarefa).getByRole('button', { name: 'Adicionar à agenda' }));
+    const confirmacao = await screen.findByRole('dialog', { name: 'Horário ocupado' });
+    expect(AtividadeService.sincronizar).not.toHaveBeenCalled();
+    fireEvent.change(within(confirmacao).getByLabelText('Data'), { target: { value: '2026-11-13' } });
+    await user.click(await within(confirmacao).findByRole('button', { name: 'Salvar' }));
+    await waitFor(() => expect(AtividadeService.sincronizar).toHaveBeenCalledWith(
+      'lead-hoje',
+      TAREFA,
+      'tenant-1',
+      { vence_em: '2026-11-13T21:00:00Z' },
+    ));
   });
 
   it('sem conta Google o checkbox fica desabilitado e avisa para conectar', async () => {
