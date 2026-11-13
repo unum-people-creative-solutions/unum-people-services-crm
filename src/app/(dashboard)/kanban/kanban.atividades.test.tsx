@@ -433,7 +433,7 @@ describe('Atividades no quadro (ATV-06)', () => {
     expect(within(dialog).queryByRole('button', { name: 'Concluir' })).not.toBeInTheDocument();
     expect(within(dialog).queryByRole('button', { name: 'Cancelar' })).not.toBeInTheDocument();
     expect(within(dialog).queryByRole('button', { name: 'Agendar consulta' })).not.toBeInTheDocument();
-    expect(within(dialog).queryByRole('button', { name: 'Sincronizar' })).not.toBeInTheDocument();
+    expect(within(dialog).queryByRole('button', { name: 'Adicionar à agenda' })).not.toBeInTheDocument();
   });
 
   it('o leitor vê Na agenda e o link, sem Sincronizar', async () => {
@@ -457,7 +457,7 @@ describe('Atividades no quadro (ATV-06)', () => {
     const consulta = await within(dialog).findByRole('article', { name: 'Consulta: Retorno da avaliação' });
     expect(consulta).toHaveTextContent('Na agenda · Abrir evento');
     expect(within(consulta).getByRole('link', { name: 'Abrir evento' })).toHaveAttribute('href', 'https://www.google.com/calendar/event?eid=abc');
-    expect(within(consulta).queryByRole('button', { name: 'Sincronizar' })).not.toBeInTheDocument();
+    expect(within(consulta).queryByRole('button', { name: 'Adicionar à agenda' })).not.toBeInTheDocument();
   });
 
   it('caixa desmarcada grava a atividade sem google_agenda', async () => {
@@ -492,9 +492,9 @@ describe('Atividades no quadro (ATV-06)', () => {
     const dialog = await screen.findByRole('dialog', { name: 'Ficha do lead' });
     await user.click(within(dialog).getByRole('tab', { name: 'Atividades' }));
     const tarefa = await within(dialog).findByRole('article', { name: 'Tarefa: Enviar proposta' });
-    await user.click(within(tarefa).getByRole('button', { name: 'Sincronizar' }));
+    await user.click(within(tarefa).getByRole('button', { name: 'Adicionar à agenda' }));
     expect(await within(dialog).findByRole('alert')).toHaveTextContent('Conecte o Google Agenda em Configurações para sincronizar.');
-    expect(within(tarefa).getByRole('button', { name: 'Sincronizar' })).toBeEnabled();
+    expect(within(tarefa).getByRole('button', { name: 'Adicionar à agenda' })).toBeEnabled();
     expect(within(tarefa).getByRole('link', { name: 'Configurações' })).toHaveAttribute('href', '/settings?aba=google-agenda');
   });
 
@@ -519,9 +519,9 @@ describe('Atividades no quadro (ATV-06)', () => {
     const dialog = await screen.findByRole('dialog', { name: 'Ficha do lead' });
     await user.click(within(dialog).getByRole('tab', { name: 'Atividades' }));
     const tarefa = await within(dialog).findByRole('article', { name: 'Tarefa: Enviar proposta' });
-    await user.click(within(tarefa).getByRole('button', { name: 'Sincronizar' }));
+    await user.click(within(tarefa).getByRole('button', { name: 'Adicionar à agenda' }));
     expect(await within(dialog).findByRole('alert')).toHaveTextContent('Não foi possível pôr na sua agenda. Tente de novo.');
-    expect(within(tarefa).getByRole('button', { name: 'Sincronizar' })).toBeEnabled();
+    expect(within(tarefa).getByRole('button', { name: 'Adicionar à agenda' })).toBeEnabled();
     expect(within(tarefa).queryByRole('link', { name: 'Abrir evento' })).not.toBeInTheDocument();
   });
 
@@ -576,7 +576,7 @@ describe('Atividades no quadro (ATV-06)', () => {
 
     const tarefa = await within(dialog).findByRole('article', { name: 'Tarefa: Enviar proposta' });
     expect(within(tarefa).queryByRole('link', { name: 'Abrir evento' })).not.toBeInTheDocument();
-    await user.click(within(tarefa).getByRole('button', { name: 'Sincronizar' }));
+    await user.click(within(tarefa).getByRole('button', { name: 'Adicionar à agenda' }));
     await waitFor(() => expect(AtividadeService.sincronizar).toHaveBeenCalledWith('lead-hoje', TAREFA, 'tenant-1'));
     expect(within(dialog).getByRole('article', { name: 'Tarefa: Enviar proposta' })).toHaveTextContent('Na agenda · Abrir evento');
     expect(within(dialog).getByRole('link', { name: 'Abrir evento' })).toHaveAttribute('href', 'https://www.google.com/calendar/event?eid=abc');
