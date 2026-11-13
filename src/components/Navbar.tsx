@@ -21,6 +21,7 @@ interface NavbarProps {
   onNewSale?: () => void;
   newSaleLabel?: string;
   onEditarFunil?: () => void;
+  antesDeAtualizar?: React.ReactNode;
   children?: React.ReactNode; 
 }
 
@@ -31,6 +32,7 @@ export default function Navbar({
   onNewSale,
   newSaleLabel = "Registrar Nova Venda",
   onEditarFunil,
+  antesDeAtualizar,
   children 
 }: NavbarProps) {
   const { session, logout } = useAuthStore();
@@ -149,11 +151,12 @@ export default function Navbar({
           {/* Lado Direito: Ações e Menu */}
           <div className="flex items-center gap-2 flex-shrink-0">
             
+            {antesDeAtualizar}
             {/* Botão de Refresh Rápido */}
             {onRefresh && (
               <button 
                 onClick={onRefresh}
-                className="hidden md:flex p-2 text-gray-400 hover:text-primary-600 hover:bg-gray-50 rounded-lg transition-all"
+                className="flex p-2 text-gray-400 hover:text-primary-600 hover:bg-gray-50 rounded-lg transition-all"
                 title="Atualizar"
               >
                 <RefreshCw size={20} />
