@@ -234,12 +234,16 @@ describe('Atividades no quadro (ATV-06)', () => {
       'lead-perdido': { itens: [{ ...atividades.itens[0], id: 'perdido', vence_em: '2026-11-12T18:00:00Z', situacao: 'pendente' }] },
     };
     renderKanban();
-    expect(await screen.findByRole('button', { name: 'Filtros' })).toBeInTheDocument();
+    const filtros = await screen.findByRole('button', { name: 'Filtros' });
+    const atualizar = screen.getByTitle('Atualizar');
+    expect(filtros.compareDocumentPosition(atualizar) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(screen.queryByRole('button', { name: 'Hoje' })).not.toBeInTheDocument();
     expect(await screen.findByText('Bruno Amanha')).toBeInTheDocument();
     expect(screen.getByText('Convertido Ganho')).toBeInTheDocument();
 
     await user.click(screen.getByRole('button', { name: 'Filtros' }));
+    const menu = screen.getByRole('group', { name: 'Filtros do quadro' });
+    expect(menu.closest('nav')).toBeNull();
     expect(screen.getByRole('button', { name: 'Hoje' })).toHaveAttribute('aria-pressed', 'false');
     await user.click(screen.getByRole('button', { name: 'Hoje' }));
 

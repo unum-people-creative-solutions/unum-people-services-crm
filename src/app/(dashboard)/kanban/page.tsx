@@ -1057,14 +1057,16 @@ function KanbanContent() {
         onNewLead={pode("crm.lead.criar") ? () => setIsModalOpen(true) : undefined}
         onNewSale={podeEditar ? () => setIsNewSaleModalOpen(true) : undefined}
         onEditarFunil={podeEditarFunil && funil && !erroFunil && !editando ? entrarNaEdicao : undefined}
+        antesDeAtualizar={
+          <FiltroDoQuadro
+            hoje={atividadesLigadas ? soHoje : null}
+            adiados={adiarLigado ? soAdiados : null}
+            quantidadeAdiados={quantidadeAdiados}
+            onHoje={() => setSoHoje((atual) => !atual)}
+            onAdiados={() => setSoAdiados((atual) => !atual)}
+          />
+        }
       >
-        <FiltroDoQuadro
-          hoje={atividadesLigadas ? soHoje : null}
-          adiados={adiarLigado ? soAdiados : null}
-          quantidadeAdiados={quantidadeAdiados}
-          onHoje={() => setSoHoje((atual) => !atual)}
-          onAdiados={() => setSoAdiados((atual) => !atual)}
-        />
         <div className="hidden md:flex items-center gap-3">
 
           <div className="flex items-center bg-gray-100 rounded-lg p-1">
@@ -1127,14 +1129,6 @@ function KanbanContent() {
             {[2025, 2026, 2027].map(y => <option key={y} value={y}>{y}</option>)}
           </select>
         </div>
-
-        <button 
-          onClick={() => loadLeads()}
-          disabled={loading}
-          className={`p-2.5 text-brand-blue bg-primary-50 rounded-xl active:scale-95 transition-all border border-primary-100 shadow-sm ${loading ? 'opacity-50' : ''}`}
-        >
-          <RefreshCw size={18} className={loading ? "animate-spin" : ""} />
-        </button>
       </div>
 
       <main className="flex-1 p-4 md:p-6 min-h-0 relative">
