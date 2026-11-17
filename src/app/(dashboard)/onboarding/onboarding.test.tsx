@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import OnboardingPage from './page';
@@ -75,6 +75,48 @@ describe('OnboardingPage', () => {
 
     expect(await screen.findByText(/Nome do negócio deve ter pelo menos 2 caracteres/i)).toBeInTheDocument();
     expect(await screen.findByText(/Nicho é obrigatório/i)).toBeInTheDocument();
+    expect(TenantService.create).not.toHaveBeenCalled();
+  });
+
+  it('oferece a lista fechada de áreas de atuação, na ordem, sem as opções antigas', () => {
+    render(<OnboardingPage />);
+
+    const combo = screen.getByRole('combobox', { name: 'Área de atuação' });
+    const opcoes = within(combo).getAllByRole('option').map((o) => o.textContent);
+    expect(opcoes).toEqual([
+      'Selecione',
+      'Saúde',
+      'Beleza e estética',
+      'Bem-estar e esporte',
+      'Alimentação',
+      'Comércio e lojas',
+      'Serviços para casa',
+      'Serviços profissionais',
+      'Educação e cursos',
+      'Tecnologia e marketing',
+      'Imóveis',
+      'Automotivo',
+      'Eventos e fotografia',
+      'Outro',
+    ]);
+    for (const antiga of ['Serviços Médicos', 'Estética', 'Imobiliário', 'Educação', 'E-commerce', 'Outros']) {
+      expect(within(combo).queryByRole('option', { name: antiga })).not.toBeInTheDocument();
+    }
+  });
+
+  it('escolher Saúde e enviar manda nicho "Saúde"', async () => {
+    const user = userEvent.setup();
+    (TenantService.create as any).mockResolvedValue({ id: 'tid', nome_negocio: 'Clínica X' });
+
+    render(<OnboardingPage />);
+
+    await user.type(screen.getByLabelText(/Nome do seu Negócio/i), 'Clínica X');
+    await user.selectOptions(screen.getByRole('combobox', { name: 'Área de atuação' }), 'Saúde');
+    await user.click(screen.getByRole('button', { name: /Finalizar e Acessar Kanban/i }));
+
+    await waitFor(() => {
+      expect(TenantService.create).toHaveBeenCalledWith(expect.objectContaining({ nicho: 'Saúde' }));
+    });
   });
 
   it('deve criar o tenant com sucesso e redirecionar', async () => {
@@ -84,14 +126,14 @@ describe('OnboardingPage', () => {
     render(<OnboardingPage />);
 
     await user.type(screen.getByLabelText(/Nome do seu Negócio/i), 'Startup X');
-    await user.selectOptions(screen.getByLabelText(/Nicho \/ Área de Atuação/i), 'Estética');
+    await user.selectOptions(screen.getByLabelText('Área de atuação'), 'Beleza e estética');
     
     await user.click(screen.getByRole('button', { name: /Finalizar e Acessar Kanban/i }));
 
     await waitFor(() => {
       expect(TenantService.create).toHaveBeenCalledWith(expect.objectContaining({
         nome_negocio: 'Startup X',
-        nicho: 'Estética',
+        nicho: 'Beleza e estética',
         email_contato: mockSession.email
       }));
       expect(mockSetSession).toHaveBeenCalledWith(expect.objectContaining({
@@ -111,7 +153,7 @@ describe('OnboardingPage', () => {
     render(<OnboardingPage />);
 
     await user.type(screen.getByLabelText(/Nome do seu Negócio/i), 'Startup Existente');
-    await user.selectOptions(screen.getByLabelText(/Nicho \/ Área de Atuação/i), 'Educação');
+    await user.selectOptions(screen.getByLabelText('Área de atuação'), 'Educação e cursos');
     
     await user.click(screen.getByRole('button', { name: /Finalizar e Acessar Kanban/i }));
 

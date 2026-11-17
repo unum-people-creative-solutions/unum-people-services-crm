@@ -11,6 +11,7 @@ import { onboardingSchema } from "@/lib/validations";
 import { Input } from "@/components/ui/Input";
 import { redirectToHostedUI } from "@/lib/pkce";
 import { z } from "zod";
+import { AREAS_DE_ATUACAO } from "@/lib/areasDeAtuacao";
 
 type OnboardingFormValues = z.infer<typeof onboardingSchema>;
 
@@ -101,7 +102,7 @@ export default function OnboardingPage() {
           />
 
           <div>
-            <label htmlFor={nichoId} className="block text-sm font-semibold text-gray-700 mb-2">Nicho / Área de Atuação</label>
+            <label htmlFor={nichoId} className="block text-sm font-semibold text-gray-700 mb-2">Área de atuação</label>
             <select
               id={nichoId}
               {...register("nicho")}
@@ -109,13 +110,10 @@ export default function OnboardingPage() {
                 errors.nicho ? "border-red-500" : "border-gray-300"
               }`}
             >
-              <option value="">Selecione um nicho</option>
-              <option value="Serviços Médicos">Serviços Médicos</option>
-              <option value="Estética">Estética</option>
-              <option value="Imobiliário">Imobiliário</option>
-              <option value="Educação">Educação</option>
-              <option value="E-commerce">E-commerce</option>
-              <option value="Outros">Outros</option>
+              <option value="">Selecione</option>
+              {AREAS_DE_ATUACAO.map((area) => (
+                <option key={area} value={area}>{area}</option>
+              ))}
             </select>
             {errors.nicho && <p className="text-red-500 text-xs mt-1">{errors.nicho.message}</p>}
           </div>
