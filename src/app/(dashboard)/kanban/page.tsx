@@ -5,6 +5,8 @@ import { useSearchParams } from "next/navigation";
 import { DragDropContext, Droppable, Draggable } from "@hello-pangea/dnd";
 import api, { AtividadeService, FunilService, LeadService, TenantService, LeadData, LeadSale, MonthSale, mensagemDeErro, GoogleAgendaService, type AgendamentoNoGoogle, type Atividade, type AcaoDaColuna, type ExigenciaDaAcao, type PapelEtapa, type TipoDeAtividade } from "@/services/api";
 import { useFunil } from "@/hooks/useFunil";
+import { useOrigens } from "@/hooks/useOrigens";
+import { CampoOrigem } from "@/components/CampoOrigem";
 import { adicionar, definirAcao, iniciar, mover, moverParaDireita, moverParaEsquerda, paraPedido, podeAdicionar, remover, renomear, type Rascunho } from "@/lib/editorDoFunil";
 import { BarraDoEditor, BotaoAdicionar, BotaoRemover, ColunaArrastavel, FaixaDoFunil, mensagemDeErroDoFunil, NomeDaColuna, SeletorDaAcao, SetasDaColuna } from "./_components/EditorDoFunil";
 import { FiltroDoQuadro } from "./_components/FiltroDoQuadro";
@@ -145,6 +147,9 @@ function KanbanContent() {
 
   // Colunas vêm do funil da empresa (FUN-02). Sem funil, o quadro não inventa o padrão (FUN-03).
   const { funil, erro: erroFunil, recarregar, substituir } = useFunil();
+  // Origens do lead da empresa (spec crm-origens-personalizadas): uma leitura para os 3 campos.
+  const origens = useOrigens();
+  const origemPadrao = origens.origens?.itens[0] ?? "Indicação";
   const podeEditarFunil = useFlag("crm-funil-editavel") && pode("crm.funil.editar");
   const [editando, setEditando] = useState(false);
   const [colunaSumiu, setColunaSumiu] = useState(false);
@@ -276,6 +281,16 @@ function KanbanContent() {
   const editLeadForm = useForm<LeadFormValues>({
     resolver: zodResolver(leadSchema),
   });
+
+  // O padrão do modal de criar é o 1º item da lista da conta. Quando a lista chega (ou muda), só
+  // troca se o campo ainda está no padrão anterior: o que a pessoa escolheu fica.
+  const origemPadraoAplicada = useRef("Indicação");
+  useEffect(() => {
+    if (createLeadForm.getValues("origem") === origemPadraoAplicada.current) {
+      createLeadForm.setValue("origem", origemPadrao);
+    }
+    origemPadraoAplicada.current = origemPadrao;
+  }, [origemPadrao, createLeadForm]);
 
   const [editingLeadId, setEditingLeadId] = useState<string | null>(null);
   const [editingLeadSales, setEditingLeadSales] = useState<LeadSale[]>([]);
@@ -508,7 +523,7 @@ function KanbanContent() {
     try {
       await LeadService.create(data, activeTenantId);
       setIsModalOpen(false);
-      createLeadForm.reset();
+      createLeadForm.reset({ origem: origemPadrao });
       loadLeads();
     } catch (err) { alert(mensagemDeErro(err, "Falha ao criar lead")); }
   };
@@ -532,7 +547,7 @@ function KanbanContent() {
       telefone: lead.telefone,
       cpf: lead.cpf || "",
       data_nascimento: lead.data_nascimento || "",
-      origem: lead.origem,
+      origem: lead.origem ?? "",
       anotacoes: lead.anotacoes || ""
     });
     
@@ -1575,20 +1590,24 @@ function KanbanContent() {
                       />
                     )}
                   />
-                  <div>
-                    <label className="block text-sm font-bold text-gray-700 mb-1">Origem</label>
-                    <select 
-                      {...createLeadForm.register("origem")}
-                      className="w-full border p-2 rounded-md outline-none focus:ring-2 focus:ring-brand-blue bg-white"
-                    >
-                      <option value="Indicação">Indicação</option>
-                      <option value="WhatsApp">WhatsApp</option>
-                      <option value="Instagram">Instagram</option>
-                      <option value="Facebook">Facebook</option>
-                      <option value="Outro">Outro</option>                
-                    </select>
-                    {createLeadForm.formState.errors.origem && <p className="text-red-500 text-xs mt-1">{createLeadForm.formState.errors.origem.message}</p>}
-                  </div>
+                  <Controller
+                    control={createLeadForm.control}
+                    name="origem"
+                    render={({ field }) => (
+                      <CampoOrigem
+                        id="novo-lead-origem"
+                        valor={field.value ?? ""}
+                        onChange={field.onChange}
+                        onBlur={field.onBlur}
+                        travado={false}
+                        podeEditar={podeEditar}
+                        origens={origens}
+                        tenantId={activeTenantId || ""}
+                        classeDoRotulo="block text-sm font-bold text-gray-700 mb-1"
+                      />
+                    )}
+                  />
+                  {createLeadForm.formState.errors.origem && <p className="text-red-500 text-xs mt-1">{createLeadForm.formState.errors.origem.message}</p>}
                   <div>
                     <label className="block text-sm font-bold text-gray-700 mb-1">Anotações</label>
                     <textarea 
@@ -1782,30 +1801,24 @@ function KanbanContent() {
                         />
                       )}
                     />
-                    <div>
-                      <label className="text-xs font-bold text-gray-500 uppercase">Origem</label>
-                      {editingLeadSource === "LANDING_PAGE" ? (
-                        <div className="flex flex-col gap-1">
-                          <div className="w-full border p-2 rounded-md bg-gray-50 text-gray-500 italic flex items-start gap-2 overflow-hidden">
-                            <Tag size={14} className="shrink-0 mt-0.5" /> 
-                            <span className="flex-1 break-all">{editLeadForm.getValues("origem")}</span>
-                          </div>
-                          <span className="text-[10px] text-amber-600 font-medium">Leads vindos do site não podem ter a origem alterada.</span>
-                        </div>
-                      ) : (
-                        <select 
-                          {...editLeadForm.register("origem")}
-                          className="w-full border p-2 rounded-md outline-none focus:ring-2 focus:ring-brand-blue bg-white"
-                        >
-                          <option value="Indicação">Indicação</option>
-                          <option value="WhatsApp">WhatsApp</option>
-                          <option value="Instagram">Instagram</option>
-                          <option value="Facebook">Facebook</option>
-                          <option value="Outro">Outro</option>
-                        </select>
+                    <Controller
+                      control={editLeadForm.control}
+                      name="origem"
+                      render={({ field }) => (
+                        <CampoOrigem
+                          id="editar-lead-origem"
+                          valor={field.value ?? ""}
+                          onChange={field.onChange}
+                          onBlur={field.onBlur}
+                          travado={editingLeadSource === "LANDING_PAGE"}
+                          podeEditar={podeEditar}
+                          origens={origens}
+                          tenantId={activeTenantId || ""}
+                          classeDoRotulo="text-xs font-bold text-gray-500 uppercase"
+                        />
                       )}
-                      {editLeadForm.formState.errors.origem && <p className="text-red-500 text-xs mt-1">{editLeadForm.formState.errors.origem.message}</p>}
-                    </div>
+                    />
+                    {editLeadForm.formState.errors.origem && <p className="text-red-500 text-xs mt-1">{editLeadForm.formState.errors.origem.message}</p>}
                     <div>
                       <label className="text-xs font-bold text-gray-500 uppercase">Anotações</label>
                       <textarea 
@@ -2118,6 +2131,7 @@ function KanbanContent() {
           emailDaSessao={session?.email || ""}
           podeEditar={podeEditar}
           podeExcluir={pode("crm.lead.excluir")}
+          origens={origens}
           atividadesLigadas={atividadesLigadas}
           papel={colunas.find((coluna) => coluna.id === ficha.status)?.papel}
           onAdiar={() => abrirAdiar(ficha)}

@@ -18,6 +18,7 @@ vi.mock('next/navigation', () => ({
 }));
 
 vi.mock('@/services/api', async () => {
+  const { default: origensPadrao } = await import('@/services/__fixtures__/get-crm-origens-padrao.json');
   const real = await vi.importActual<typeof import('@/services/api')>('@/services/api');
   const { default: funil } = await import('@/services/__fixtures__/get-crm-funil-padrao.json');
   return {
@@ -26,6 +27,7 @@ vi.mock('@/services/api', async () => {
     MENSAGEM_SEM_PERMISSAO: real.MENSAGEM_SEM_PERMISSAO,
     AcessosService: { get: vi.fn() },
     FunilService: { ler: vi.fn(async () => funil), salvar: vi.fn() },
+    OrigensService: { ler: vi.fn(async () => origensPadrao), salvar: vi.fn() },
     LeadService: {
       list: vi.fn(),
       create: vi.fn(),

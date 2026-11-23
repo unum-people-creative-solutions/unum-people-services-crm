@@ -550,6 +550,29 @@ export const FunilService = {
   },
 };
 
+// Origens do lead da empresa (spec crm-origens-personalizadas, TECH-DESIGN §3.2).
+export { ORIGENS_PADRAO } from '@/lib/origens';
+
+export interface Origens {
+  versao: number;
+  itens: string[];
+}
+
+export const OrigensService = {
+  ler: async (tenantId?: string): Promise<Origens> => {
+    let url = '/crm/origens';
+    if (tenantId) url += `?tenant_id=${encodeURIComponent(tenantId)}`;
+    const response = await api.get(url);
+    return response.data;
+  },
+  salvar: async (versao: number, itens: string[], tenantId?: string): Promise<Origens> => {
+    let url = '/crm/origens';
+    if (tenantId) url += `?tenant_id=${encodeURIComponent(tenantId)}`;
+    const response = await api.put(url, { versao, itens });
+    return response.data;
+  },
+};
+
 // Rotas do Google Agenda (crm-google-agenda RF-07); empresa pela query tenant_id.
 const qsTenant = (tenantId: string) => `tenant_id=${encodeURIComponent(tenantId)}`;
 
