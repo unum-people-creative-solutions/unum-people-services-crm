@@ -21,6 +21,8 @@ import { Input } from "@/components/ui/Input";
 import { PhoneInput } from "@/components/ui/PhoneInput";
 import { CPFInput } from "@/components/ui/CPFInput";
 import { StatusAdsDaVenda } from "@/components/StatusAdsDaVenda";
+import { CampoOrigem } from "@/components/CampoOrigem";
+import type { EstadoDasOrigens } from "@/hooks/useOrigens";
 import { useFlag } from "@/hooks/useFlag";
 import {
   AtividadeService,
@@ -49,8 +51,6 @@ const TIPOS: { valor: TipoDeInteracao; rotulo: string }[] = [
 ];
 
 const ROTULO: Record<string, string> = Object.fromEntries(TIPOS.map((tipo) => [tipo.valor, tipo.rotulo]));
-
-const ORIGENS = ["Indicação", "WhatsApp", "Instagram", "Facebook", "Outro"];
 
 const esquemaDados = leadSchema.omit({ anotacoes: true });
 type Dados = z.infer<typeof esquemaDados>;
@@ -117,6 +117,7 @@ export interface FichaDoLeadProps {
   emailDaSessao: string;
   podeEditar: boolean;
   podeExcluir: boolean;
+  origens: EstadoDasOrigens;
   atividadesLigadas?: boolean;
   papel?: PapelEtapa;
   onAdiar?: () => void;
@@ -138,6 +139,7 @@ export function FichaDoLead({
   emailDaSessao,
   podeEditar,
   podeExcluir,
+  origens,
   atividadesLigadas = false,
   papel,
   onAdiar,
@@ -281,6 +283,7 @@ export function FichaDoLead({
           lead={lead}
           tenantId={tenantId}
           podeEditar={podeEditar}
+          origens={origens}
           onSalvo={onSalvo}
           onFechar={onFechar}
           onRegistrarVenda={onRegistrarVenda}
@@ -342,6 +345,7 @@ function AbaDados({
   lead,
   tenantId,
   podeEditar,
+  origens,
   onSalvo,
   onFechar,
   onRegistrarVenda,
@@ -353,6 +357,7 @@ function AbaDados({
   lead: FichaLead;
   tenantId: string;
   podeEditar: boolean;
+  origens: EstadoDasOrigens;
   onSalvo: () => void;
   onFechar: () => void;
   onRegistrarVenda: () => void;
@@ -419,24 +424,23 @@ function AbaDados({
               <PhoneInput label="WhatsApp" {...field} error={form.formState.errors.telefone?.message} placeholder="(00) 00000-0000" />
             )}
           />
-          <div>
-            <label htmlFor={`${id}-origem`} className="text-xs font-bold uppercase text-gray-500">Origem</label>
-            {origemTravada ? (
-              <div className="mt-1 rounded-md border bg-gray-50 p-2 text-gray-500">
-                <p>{form.getValues("origem")}</p>
-                <p className="mt-1 text-[10px] font-medium text-amber-600">Leads vindos do site não podem ter a origem alterada.</p>
-              </div>
-            ) : (
-              <select
+          <Controller
+            control={form.control}
+            name="origem"
+            render={({ field }) => (
+              <CampoOrigem
                 id={`${id}-origem`}
-                {...form.register("origem")}
-                className="mt-1 w-full rounded-md border bg-white p-2 outline-none focus:ring-2 focus:ring-brand-blue"
-              >
-                {ORIGENS.map((origem) => <option key={origem} value={origem}>{origem}</option>)}
-              </select>
+                valor={field.value}
+                onChange={field.onChange}
+                onBlur={field.onBlur}
+                travado={origemTravada}
+                podeEditar={podeEditar}
+                origens={origens}
+                tenantId={tenantId}
+              />
             )}
-            {form.formState.errors.origem && <p className="mt-1 text-xs text-red-500">{form.formState.errors.origem.message}</p>}
-          </div>
+          />
+          {form.formState.errors.origem && <p className="mt-1 text-xs text-red-500">{form.formState.errors.origem.message}</p>}
         </fieldset>
 
         {mostrarVendas && <VendasDoMes lead={lead} podeEditar={podeEditar} onRegistrarVenda={onRegistrarVenda} />}

@@ -16,6 +16,7 @@ vi.mock('next/navigation', () => ({
 }));
 
 vi.mock('@/services/api', async () => {
+  const { default: origensPadrao } = await import('@/services/__fixtures__/get-crm-origens-padrao.json');
   const real = await vi.importActual<typeof import('@/services/api')>('@/services/api');
   const { default: funilPadrao } = await import('@/services/__fixtures__/get-crm-funil-padrao.json');
   return {
@@ -23,6 +24,7 @@ vi.mock('@/services/api', async () => {
     mensagemDeErro: real.mensagemDeErro,
     AcessosService: { get: vi.fn() },
     FunilService: { ler: vi.fn(async () => funilPadrao) },
+    OrigensService: { ler: vi.fn(async () => origensPadrao), salvar: vi.fn() },
     LeadService: {
       list: vi.fn(),
       create: vi.fn(),
